@@ -75,11 +75,11 @@ In parallel with your own analysis, ask `codex` to review the same diff and fold
 
 1. **Kick off codex early.** Right after you've resolved the base ref and before you start reading files, run `codex exec review` as a background bash call so it works while you do:
    ```
-   codex exec review --base <ref> > /tmp/codex-review-<branch>.md 2>&1
+   codex exec review --base <ref>
    ```
-   Use the same `--base <ref>` you resolved for your own review. Use `Bash` with `run_in_background=true` so you continue immediately. `<branch>` is the current branch with `/` → `-`.
+   Use the same `--base <ref>` you resolved for your own review. Use `Bash` with `run_in_background=true` so you continue immediately. Do NOT redirect output to a file — a redirect triggers an interactive permission prompt; the harness captures stdout/stderr of the background call.
 2. **Do your own review** per the Objectives above. Do not wait for codex — your analysis is independent and primary.
-3. **When codex finishes**, read `/tmp/codex-review-<branch>.md`.
+3. **When codex finishes**, read its captured output from the background task result.
 4. **Integrate** codex findings into your compound review:
    - Valid finding you missed → add it to the compound review.
    - Duplicate of one of your findings → leave your version in place.
@@ -186,6 +186,6 @@ Whether `/save-plan` creates a new file or a new `REVIEW` chapter inside an exis
 
 1. **Compound review** (first, primary) — your findings with relevant codex findings folded in. This is the actionable part the reviewer reads. Each finding uses its `<ID>` (e.g. `P1-R1#1`).
 2. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries from prior rounds, original IDs preserved.
-3. **Raw codex review** (subsection, e.g. `### Raw codex review`) — the verbatim content of `/tmp/codex-review-<branch>.md`. Do not edit, trim, summarize, or reformat it; preserve it as-is so the reader can audit independently.
+3. **Raw codex review** (subsection, e.g. `### Raw codex review`) — the verbatim captured output of the `codex exec review` background call. Do not edit, trim, summarize, or reformat it; preserve it as-is so the reader can audit independently.
 
 If codex was unavailable or failed, omit the raw subsection and add one line under the compound review noting why (e.g. `codex unavailable: <reason>`).
