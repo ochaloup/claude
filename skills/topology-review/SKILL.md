@@ -1,6 +1,6 @@
 ---
 name: topology-review
-description: Invariant-class review for changes that alter topology, multiplicity, or scope — one process becoming many, many becoming one, a new discriminator on shared storage, a type gaining a collection variant. Finds defects where every hunk is locally correct but a property previously guaranteed by the structure is silently gone. Use when the user runs /topology-review, and as the fourth engine chained from the code-review skill.
+description: Invariant-class review for changes that alter topology, multiplicity, or scope — one process becoming many, many becoming one, a new discriminator on shared storage, a type gaining a collection variant. Finds defects where every hunk is locally correct but a property previously guaranteed by the structure is silently gone. Use when the user runs /topology-review, and as the opt-in engine chained from the code-review skill via --topology or max.
 when_to_use: a diff consolidates/splits processes, queues or databases, adds a scope key to shared storage, or changes a type to its collection variant — defects diff-reading cannot see; for ordinary hunk-level review use code-review
 argument-hint: "[--base <ref>] [--thesis <text>] [--criteria <text|file>] [--embedded]"
 ---

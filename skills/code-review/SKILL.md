@@ -1,8 +1,8 @@
 ---
 name: code-review
-description: Review this branch's changes against a base ref using git diff, pooling up to four engines — your own objectives, a parallel codex review, Claude Code's built-in multi-agent review workflow, and (when the diff changes topology, multiplicity or scope) the topology-review skill — then verifying every candidate before it becomes a finding. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
+description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. Heavier engines (Claude Code's built-in multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
 when_to_use: reviewing branch/uncommitted work against a base ref; for reviewer feedback on an open PR use pr-review instead
-argument-hint: "[--base <ref>] [low|high|xhigh|max]"
+argument-hint: "[--base <ref>] [--deep] [--topology] [max]"
 ---
 
 # Code Review
@@ -14,181 +14,144 @@ Determine the base ref as follows:
 - If an argument `--base <ref>` is provided in this prompt, use that ref.
 - Otherwise, try `git diff main` first; if that fails or returns nothing, try `git diff master`.
 
-Determine the engine level: if a bare `low`, `high`, `xhigh`, or `max` token is
-present in the invocation, that is LEVEL; otherwise LEVEL is `high`. It controls
-only the built-in engine's fan-out, not your own analysis.
+## Engine selection
 
-For each changed file, read the full file — not just the diff — to understand context, 
-detect duplication, and identify broken invariants.
-For structureal changes and config/manifest directories, also read sibling files in the same directory and any file the diff transitively references 
-- bugs in declarative config are usually inconsistencies across files, not within one.
+**Default is lean: your own analysis + codex, verified inline. Nothing else.**
+Extra engines cost real money and run only when explicitly asked for.
+
+| Invocation | Engines |
+|---|---|
+| `/code-review` | your analysis + codex |
+| `/code-review --deep` | + built-in multi-agent workflow |
+| `/code-review --topology` | + topology-review skill |
+| `/code-review max` | all of the above |
+
+Never add an engine the invocation did not ask for. If the diff looks like it
+would benefit from one — e.g. it merges processes or turns a `T` into a `Vec<T>` —
+say so in one line at the end of the report and let the user re-run with the flag.
+Do not escalate on your own initiative.
+
+## Reading policy
+
+Read the diff first. Then read **only** what you need to judge it:
+
+- The enclosing function/module of each hunk, and direct callers of anything whose
+  signature or behaviour changed.
+- The full file only when the hunk's correctness genuinely depends on distant state
+  in that file (invariants, init order, shared mutable state). Not by default.
+- For declarative config, sibling files in the same directory and anything the diff
+  transitively references.
+
+Do not read every changed file end to end. That habit is what makes this review
+expensive, and it rarely changes a verdict.
 
 ## Objectives
 
-1. **Logical flaws** — Bugs, incorrect assumptions, edge cases, off-by-one errors, 
+1. **Logical flaws** — Bugs, incorrect assumptions, edge cases, off-by-one errors,
    race conditions, improper error handling, broken invariants.
-2. **Regression risk** — Changes that could break existing behavior. Note whether 
+2. **Regression risk** — Changes that could break existing behavior. Note whether
    tests cover the affected paths; if not, describe what scenarios need coverage.
-3. **Data correctness** — Data corruption risks, SQL query issues (injection, wrong 
+3. **Data correctness** — Data corruption risks, SQL query issues (injection, wrong
    joins, missing transactions), race conditions on reads/writes/inserts.
 4. **Dead code** — Unreachable code, unused exports/functions/variables. Propose removal.
-5. **Code quality** — Violations of DRY, unnecessary complexity, poor naming, 
+5. **Code quality** — Violations of DRY, unnecessary complexity, poor naming,
    missed abstractions. Suggest a concrete fix, not just a flag.
-6. **Simplification opportunities** — Identify code that could be meaningfully 
-   shortened or clarified without changing behavior: unnecessary abstractions, 
-   overly defensive checks, verbose constructs replaceable by a standard library 
-   call, or logic that can be collapsed. Provide the simplified version inline.
-   Only flag if the simplification reduces lines or cognitive complexity meaningfully 
-   (not just style preference or minor renaming).
+6. **Simplification opportunities** — Code that could be meaningfully shortened or
+   clarified without changing behavior: unnecessary abstractions, overly defensive
+   checks, verbose constructs replaceable by a standard library call, or logic that
+   can be collapsed. Provide the simplified version inline. Only flag if it reduces
+   lines or cognitive complexity meaningfully — not style preference or renaming.
 7. **Code reusability** — Check shared libraries before writing utility logic.
    For TS: use typescript-common (expected location $HOME/marinade/typescript-common/)
-   if a package from that present in package.json; if not, notify that it should be considered.
-8. **Security awareness** — Be mindful of common vulnerabilities: avoid exposing secrets or credentials in code,
-   validate and sanitize inputs, prefer well-maintained libraries over custom crypto/auth implementations,
-   and flag any suspicious patterns (e.g. SQL injection risks, unsafe deserialization, overly permissive access controls).
-9. **Configuration & manifest consistency (YAML/K8s/IaC)** — For changes to
-   declarative config (K8s manifests, Helm, Kustomize, Argo CD, Terraform,
-   CI configs), check cross-file consistency, not just local correctness.
-   Read sibling files and anything the diff transitively references
-   (Application sources, Kustomize bases, Helm values).
-   Verify:
-   - **Enumerated lists match reality.** Explicit lists of namespaces,
-     services, envs, accounts, repos (ECR auth CronJob, ApplicationSet
-     generators, NetworkPolicy peers, RBAC subjects, Kustomize `resources:`)
-     stay in sync with what's actually defined elsewhere.
-   - **References resolve.** ServiceAccount, Secret, ConfigMap, Role,
-     PVC, Service, Ingress backend, image refs point at something that
-     exists in the right namespace.
-   - **New namespaces are enrolled in shared infra.** Image pull secrets,
-     monitoring selectors, logging, NetworkPolicies, cert-manager,
-     external-secrets, backups, RBAC. Catches `ImagePullBackOff` /
-     no-metrics / default-deny surprises.
-   - **GitOps picks it up.** New manifests are selected by some Application
-     or ApplicationSet (path globs, generators, value files). Otherwise
-     it's dead config.
-   - **Selectors and labels are symmetric.** Service → Pod, NetworkPolicy
-     podSelector, HPA target, ServiceMonitor — selectors match the labels
-     actually set, and don't over-match.
-   - **Schema sane.** `apiVersion`/`kind` valid and not deprecated; required
-     fields present; image tags pinned in prod; resource requests/limits
-     where namespace enforces them.
-   - **No plaintext secrets.** Use the repo's external secret convention
-     (SealedSecrets, ExternalSecrets, SOPS).
-   Render-time check: would `kustomize build` / `helm template` /
-   `kubectl apply --dry-run=server` / `argocd app diff` succeed?
+   if a package from that is present in package.json; if not, notify that it should
+   be considered.
+8. **Security awareness** — Avoid exposing secrets or credentials in code, validate
+   and sanitize inputs, prefer well-maintained libraries over custom crypto/auth,
+   and flag suspicious patterns (SQL injection, unsafe deserialization, overly
+   permissive access controls).
+9. **Configuration & manifest consistency** — Only when the diff touches K8s/Helm/
+   Kustomize/Argo/Terraform/CI config: read `config-review.md` in this skill's
+   directory and apply it. Skip entirely otherwise.
 
 Only report problems. No praise, no neutral observations.
 
-
 ## Parallel codex review
 
-In parallel with your own analysis, ask `codex` to review the same diff and fold its findings in.
+Codex runs on a separate quota, so it is the cheapest second opinion available.
+Always run it.
 
-1. **Kick off codex early.** Right after you've resolved the base ref and before you start reading files, run `codex exec review` as a background bash call so it works while you do:
+1. **Kick it off early.** Right after resolving the base ref and before reading
+   files, run it as a background bash call:
    ```
    codex exec review --base <ref>
    ```
-   Use the same `--base <ref>` you resolved for your own review. Use `Bash` with `run_in_background=true` so you continue immediately. Do NOT redirect output to a file — a redirect triggers an interactive permission prompt; the harness captures stdout/stderr of the background call.
-2. **Do your own review** per the Objectives above. Do not wait for codex — your analysis is independent and primary.
+   Use `Bash` with `run_in_background=true`. Do NOT redirect output to a file — a
+   redirect triggers an interactive permission prompt; the harness captures
+   stdout/stderr of the background call.
+2. **Do your own review** meanwhile. Do not wait for codex — your analysis is
+   independent and primary.
 3. **When codex finishes**, read its captured output from the background task result.
-4. **Integrate** codex findings into your compound review:
-   - Valid finding you missed → add it to the compound review.
-   - Duplicate of one of your findings → leave your version in place.
-   - Wrong or noise → drop it from the compound review (it still appears in the raw subsection for audit).
-   No inline attribution needed in the compound review; the raw subsection records provenance.
-5. **Preserve the raw output** verbatim under the REVIEW chapter — see Output below.
+4. **Integrate**: valid finding you missed → add it; duplicate of yours → keep
+   yours; wrong or noise → drop it.
 
-If `codex` is not installed (`which codex` fails) or the background call errors, skip the raw subsection and note the reason in one line — do not block the rest of the review.
+If `codex` is not installed (`which codex` fails) or the call errors, note the
+reason in one line and continue.
 
+## Built-in review engine — only with `--deep` or `max`
 
-## Built-in review engine
-
-Claude Code ships a multi-agent review pipeline — Scope → Find → Verify → Sweep →
-Synthesize — registered as a workflow named `code-review`. Run it as a third engine.
-
-Kick it off in the same step as codex, right after the base ref is resolved:
+Claude Code ships a multi-agent review pipeline registered as a workflow named
+`code-review`. It is the single most expensive part of this skill, which is why it
+is opt-in.
 
 ```
-Workflow({ name: "code-review", args: "<LEVEL> <BASE_REF>" })
+Workflow({ name: "code-review", args: "high <BASE_REF>" })
 ```
 
-Invoking this skill is itself the opt-in for that Workflow call — do not ask for
-separate confirmation. The workflow's own concurrency limit governs its fan-out.
+Passing `--deep` is itself the opt-in — do not ask for separate confirmation. It
+returns immediately with a task ID and notifies on completion, so continue with
+your own analysis meanwhile.
 
-It returns immediately with a task ID and notifies on completion, so continue with
-your own analysis meanwhile. Its findings arrive already verified by its internal
-per-candidate verifier and carry a CONFIRMED or PLAUSIBLE verdict — carry that
-verdict through instead of re-verifying.
+Its findings arrive already verified with a CONFIRMED or PLAUSIBLE verdict — carry
+that verdict through instead of re-verifying. Fold them in on the same terms as
+codex.
 
-Fold its findings into the compound review on the same terms as codex: valid and
-missed → add; duplicate of yours → keep your version; wrong → drop from the
-compound review, leaving it in the raw subsection for audit.
+Its correctness angles overlap your Objectives only partially — do not treat its
+silence on Objectives 7-9 as a clean bill, since it has no notion of
+typescript-common reuse or K8s/IaC cross-file consistency.
 
-Its five correctness angles (line-by-line scan, removed-behavior audit, cross-file
-caller tracing, language pitfalls, wrapper/proxy routing) overlap your Objectives
-only partially — do not treat its silence on Objectives 7-9 as a clean bill, since
-it has no notion of typescript-common reuse or K8s/IaC cross-file consistency.
+If workflows are unavailable or the call errors, note the reason in one line and
+continue.
 
-If workflows are unavailable or the call errors, skip this engine and note the
-reason in one line — do not block the rest of the review.
+## Topology engine — only with `--topology` or `max`
 
+The engines above are **diff-anchored**: they read hunks and ask whether each hunk
+is correct. A whole class of defect is invisible to that — where every hunk *is*
+correct and the damage is to a property the old structure guaranteed for free. The
+`topology-review` skill asks that different question.
 
-## Topology & invariant engine (conditional fourth engine)
-
-The three engines above are all **diff-anchored**: they read hunks and ask whether
-each hunk is correct. A whole class of defect is invisible to that — where every
-hunk *is* correct and the damage is to a property the old structure guaranteed for
-free. The `topology-review` skill asks that different question. Chain it here.
-
-**This is a gate, not an always-on step.** Fanning out six finders across a one-line
-bugfix is pure waste. After you have the diffstat and before your deep read, check
-the triggers — any one fires, run it:
-
-1. **One → many, or many → one.** A config field, CLI arg or type moves between
-   scalar and collection; processes, pods, queues, vhosts, databases or schedules
-   are merged or split.
-2. **New discriminator on shared storage.** A column, key prefix, label or tenant ID
-   added so one store holds what used to live in separate stores.
-3. **Type gains a collection variant.** `T` → `Vec<T>` / `Map<K,T>` / `TVec`,
-   especially metrics, caches, pools, registries.
-4. **Shared resource introduced or removed.** Pool, rate limiter, prefetch budget,
-   lock, cache or global counter now spanning previously separate domains.
-5. **Base-branch drift.** The branch is behind its base *and* both touched the same
-   files. Cheap; worth running the drift lens alone even when 1-4 do not fire.
-
-None fire → skip it and say so in one line. Do not invent a thesis to justify running
-it; a wrong thesis produces confidently wrong findings.
-
-When it does fire, invoke it embedded so it returns candidates instead of writing its
-own report:
+It fans out six finder agents, so it runs only when explicitly requested.
 
 ```
 Skill({ skill: "topology-review",
         args: "--base <BASE_REF> --embedded --thesis <one-line structural thesis> --criteria <acceptance criteria if known>" })
 ```
 
-**Supply `--criteria` whenever you can get it.** It is the single highest-value input
-and the one thing the repo cannot tell you: fetch the linked ticket, read the PR body,
-or use criteria the user stated in conversation. Without it the acceptance-criteria
-lens returns empty, and findings like "this now serializes across tenants" never get
-connected to "which violates the stated no-regression requirement". If the user
-mentioned requirements in the conversation, pass those verbatim.
+**Supply `--criteria` whenever you can get it** — the linked ticket, the PR body, or
+what the user stated in conversation. Without it the acceptance-criteria lens returns
+empty. Pass user-stated requirements verbatim.
 
-Its findings arrive already adversarially verified with a CONFIRMED or PLAUSIBLE
-verdict — carry the verdict through, do not re-verify. Fold them in on the same terms
-as the other engines. Two handling rules specific to this engine:
+Its findings arrive already adversarially verified — carry the verdict through, do
+not re-verify. Two handling rules specific to this engine:
 
 - A finding anchored to a line the diff did not touch is **expected**, not suspect.
   That is the signature of the class. Do not downgrade it for lacking a hunk.
 - It distinguishes pre-existing defects whose blast radius this change multiplied
-  from ones the change introduced. Preserve that distinction in the report — it
-  determines who owns the fix and keeps the finding from reading as an accusation.
+  from ones the change introduced. Preserve that distinction — it determines who
+  owns the fix.
 
-Report `not_verified_due_to_cap` entries it returns rather than dropping them
-silently.
+Report `not_verified_due_to_cap` entries rather than dropping them silently.
 
 If the skill is unavailable or errors, note the reason in one line and continue.
-
 
 ## Reporting
 
@@ -218,21 +181,22 @@ can pick up where the last one left off.
 
 ## Verify candidates (3-state ladder)
 
-Before assigning IDs, pool the candidates from every engine that ran and put the
-unverified ones through one verification pass. Candidates returned by the built-in
-workflow and by the topology engine are already verified — keep their verdict and
-skip them here.
+Pool the candidates from every engine that ran and put the unverified ones through
+one verification pass. Candidates from the built-in workflow and the topology
+engine are already verified — keep their verdict and skip them here.
 
 1. **Dedup.** Collapse candidates pointing at the same line and the same mechanism,
    keeping the one with the most concrete failure scenario.
-2. **Verify each remaining candidate.** Give the verifier the diff, the relevant
-   file(s), and that candidate alone. It returns exactly one of:
+2. **Verify each remaining candidate inline, in this context** — re-read the
+   relevant code and argue against the candidate. Do not spawn verifier subagents;
+   you already have the files in context and a subagent would re-read them from
+   cold. Only under `--deep` or `max`, and only when there are more than 8
+   unverified candidates, delegate to at most 4 parallel subagents.
+   Each candidate returns exactly one of:
    - **CONFIRMED** — the defect is real and the failure scenario holds.
    - **PLAUSIBLE** — not confirmable from the code at hand, but the reasoning stands
      and it warrants a human look.
    - **REFUTED** — the reasoning does not survive contact with the code.
-   Delegate to subagents when available, at most 4 in parallel; otherwise verify
-   sequentially in this context.
 3. **Keep CONFIRMED and PLAUSIBLE. Drop REFUTED** — a refuted candidate reaches
    neither the report, the saved MD, nor the table.
 
@@ -310,12 +274,26 @@ Above the table print the absolute saved-file path from step 2 on its own line.
 
 ### REVIEW content structure
 
-Whether `save-plan` creates a new file or a new `REVIEW` chapter inside an existing multi-type file, the chapter body must be ordered as:
+The chapter body is ordered as:
 
-1. **Compound review** (first, primary) — your verified findings with the codex, built-in-engine and topology-engine findings folded in. This is the actionable part the reviewer reads. Each finding uses its `<ID>` (e.g. `P1-R1#1`) and carries its verdict. Where a finding came from the topology engine, note its lens (e.g. `topology/fan-out`) so the report shows which question earned it.
-2. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries from prior rounds, original IDs preserved.
-3. **Raw codex review** (subsection, e.g. `### Raw codex review`) — the verbatim captured output of the `codex exec review` background call. Do not edit, trim, summarize, or reformat it; preserve it as-is so the reader can audit independently.
-4. **Raw built-in review** (subsection, e.g. `### Raw built-in review`) — the verbatim report returned by the `code-review` workflow, including candidates it REFUTED, under the same no-editing rule.
-5. **Raw topology review** (subsection, e.g. `### Raw topology review`) — the thesis it ran under, which lenses fired and which returned empty, and its full returned object including `refuted` and `not_verified_due_to_cap`. The thesis especially: every one of its findings is conditional on it, so a reader must be able to challenge it.
+1. **Compound review** (first, primary) — your verified findings with the findings
+   of whichever other engines ran folded in. Each finding uses its `<ID>` and
+   carries its verdict. Note the engine that earned it (e.g. `codex`,
+   `topology/fan-out`).
+2. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries
+   from prior rounds, original IDs preserved.
+3. **Raw codex review** — the verbatim captured output of the `codex exec review`
+   call, unedited, so the reader can audit independently.
 
-For any engine that was unavailable, failed, or was deliberately skipped, omit its raw subsection and add one line under the compound review noting why (e.g. `codex unavailable: <reason>`, `built-in engine returned no usable output: <reason>`, `topology engine skipped: no structural triggers fired`). Say which engines actually ran and how many findings each contributed — a review that silently lost an engine must not read as a full-fanout review. An engine that ran but returned nothing usable is **not** the same as an engine that ran clean; state which happened.
+Do **not** paste the built-in workflow's or the topology engine's raw output into
+the report — they are long and re-inflate context for little value. Instead, for
+each engine that ran, record one line: how many candidates it produced, how many
+survived, and for topology its thesis, which lenses fired, and any
+`not_verified_due_to_cap` entries. The thesis in particular must appear — every
+topology finding is conditional on it.
+
+End with one line naming which engines actually ran and how many findings each
+contributed. A review that silently lost an engine must not read as a full-fanout
+review. An engine that ran but returned nothing usable is **not** the same as an
+engine that ran clean; state which happened. If a heavier engine was not requested,
+say so plainly (e.g. `built-in engine: not run (no --deep)`).
