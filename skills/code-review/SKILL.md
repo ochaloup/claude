@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review this branch's changes against a base ref using git diff, pooling three engines — your own objectives, a parallel codex review, and Claude Code's built-in multi-agent review workflow — then verifying every candidate before it becomes a finding. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
+description: Review this branch's changes against a base ref using git diff, pooling up to four engines — your own objectives, a parallel codex review, Claude Code's built-in multi-agent review workflow, and (when the diff changes topology, multiplicity or scope) the topology-review skill — then verifying every candidate before it becomes a finding. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
 when_to_use: reviewing branch/uncommitted work against a base ref; for reviewer feedback on an open PR use pr-review instead
 argument-hint: "[--base <ref>] [low|high|xhigh|max]"
 ---
@@ -133,6 +133,63 @@ If workflows are unavailable or the call errors, skip this engine and note the
 reason in one line — do not block the rest of the review.
 
 
+## Topology & invariant engine (conditional fourth engine)
+
+The three engines above are all **diff-anchored**: they read hunks and ask whether
+each hunk is correct. A whole class of defect is invisible to that — where every
+hunk *is* correct and the damage is to a property the old structure guaranteed for
+free. The `topology-review` skill asks that different question. Chain it here.
+
+**This is a gate, not an always-on step.** Fanning out six finders across a one-line
+bugfix is pure waste. After you have the diffstat and before your deep read, check
+the triggers — any one fires, run it:
+
+1. **One → many, or many → one.** A config field, CLI arg or type moves between
+   scalar and collection; processes, pods, queues, vhosts, databases or schedules
+   are merged or split.
+2. **New discriminator on shared storage.** A column, key prefix, label or tenant ID
+   added so one store holds what used to live in separate stores.
+3. **Type gains a collection variant.** `T` → `Vec<T>` / `Map<K,T>` / `TVec`,
+   especially metrics, caches, pools, registries.
+4. **Shared resource introduced or removed.** Pool, rate limiter, prefetch budget,
+   lock, cache or global counter now spanning previously separate domains.
+5. **Base-branch drift.** The branch is behind its base *and* both touched the same
+   files. Cheap; worth running the drift lens alone even when 1-4 do not fire.
+
+None fire → skip it and say so in one line. Do not invent a thesis to justify running
+it; a wrong thesis produces confidently wrong findings.
+
+When it does fire, invoke it embedded so it returns candidates instead of writing its
+own report:
+
+```
+Skill({ skill: "topology-review",
+        args: "--base <BASE_REF> --embedded --thesis <one-line structural thesis> --criteria <acceptance criteria if known>" })
+```
+
+**Supply `--criteria` whenever you can get it.** It is the single highest-value input
+and the one thing the repo cannot tell you: fetch the linked ticket, read the PR body,
+or use criteria the user stated in conversation. Without it the acceptance-criteria
+lens returns empty, and findings like "this now serializes across tenants" never get
+connected to "which violates the stated no-regression requirement". If the user
+mentioned requirements in the conversation, pass those verbatim.
+
+Its findings arrive already adversarially verified with a CONFIRMED or PLAUSIBLE
+verdict — carry the verdict through, do not re-verify. Fold them in on the same terms
+as the other engines. Two handling rules specific to this engine:
+
+- A finding anchored to a line the diff did not touch is **expected**, not suspect.
+  That is the signature of the class. Do not downgrade it for lacking a hunk.
+- It distinguishes pre-existing defects whose blast radius this change multiplied
+  from ones the change introduced. Preserve that distinction in the report — it
+  determines who owns the fix and keeps the finding from reading as an accusation.
+
+Report `not_verified_due_to_cap` entries it returns rather than dropping them
+silently.
+
+If the skill is unavailable or errors, note the reason in one line and continue.
+
+
 ## Reporting
 
 - Check if there is an open PR for the current branch using `gh pr view --json url,number` (fall back to `gh pr list --head <branch>`).
@@ -161,9 +218,10 @@ can pick up where the last one left off.
 
 ## Verify candidates (3-state ladder)
 
-Before assigning IDs, pool the candidates from all three engines and put the
+Before assigning IDs, pool the candidates from every engine that ran and put the
 unverified ones through one verification pass. Candidates returned by the built-in
-workflow are already verified — keep their verdict and skip them here.
+workflow and by the topology engine are already verified — keep their verdict and
+skip them here.
 
 1. **Dedup.** Collapse candidates pointing at the same line and the same mechanism,
    keeping the one with the most concrete failure scenario.
@@ -254,9 +312,10 @@ Above the table print the absolute saved-file path from step 2 on its own line.
 
 Whether `save-plan` creates a new file or a new `REVIEW` chapter inside an existing multi-type file, the chapter body must be ordered as:
 
-1. **Compound review** (first, primary) — your verified findings with the codex and built-in-engine findings folded in. This is the actionable part the reviewer reads. Each finding uses its `<ID>` (e.g. `P1-R1#1`) and carries its verdict.
+1. **Compound review** (first, primary) — your verified findings with the codex, built-in-engine and topology-engine findings folded in. This is the actionable part the reviewer reads. Each finding uses its `<ID>` (e.g. `P1-R1#1`) and carries its verdict. Where a finding came from the topology engine, note its lens (e.g. `topology/fan-out`) so the report shows which question earned it.
 2. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries from prior rounds, original IDs preserved.
 3. **Raw codex review** (subsection, e.g. `### Raw codex review`) — the verbatim captured output of the `codex exec review` background call. Do not edit, trim, summarize, or reformat it; preserve it as-is so the reader can audit independently.
 4. **Raw built-in review** (subsection, e.g. `### Raw built-in review`) — the verbatim report returned by the `code-review` workflow, including candidates it REFUTED, under the same no-editing rule.
+5. **Raw topology review** (subsection, e.g. `### Raw topology review`) — the thesis it ran under, which lenses fired and which returned empty, and its full returned object including `refuted` and `not_verified_due_to_cap`. The thesis especially: every one of its findings is conditional on it, so a reader must be able to challenge it.
 
-For any engine that was unavailable or failed, omit its raw subsection and add one line under the compound review noting why (e.g. `codex unavailable: <reason>`, `built-in engine unavailable: <reason>`). Say which engines actually ran — a review that silently lost an engine must not read as a three-engine review.
+For any engine that was unavailable, failed, or was deliberately skipped, omit its raw subsection and add one line under the compound review noting why (e.g. `codex unavailable: <reason>`, `built-in engine returned no usable output: <reason>`, `topology engine skipped: no structural triggers fired`). Say which engines actually ran and how many findings each contributed — a review that silently lost an engine must not read as a full-fanout review. An engine that ran but returned nothing usable is **not** the same as an engine that ran clean; state which happened.
