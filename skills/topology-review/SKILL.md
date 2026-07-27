@@ -133,6 +133,10 @@ const PREAMBLE = `You are reviewing a change whose structural thesis is:
 Base ref for the diff: ${base}. Inspect with \`git diff ${base}...HEAD\` and read whole
 files, not just hunks.
 
+Run one plain command per Bash call — no \`$(...)\`, no \`&&\` or \`;\` chains, no
+redirects. Resolve things like the merge-base in their own call and reuse the value;
+a substitution or chain is classified as dangerous and stalls on a permission prompt.
+
 CRITICAL FRAMING: you are NOT looking for incorrect lines. Assume every hunk is
 locally correct — it usually is. You are looking for a property that used to hold
 because of the old structure and no longer holds under the new one. The anchor line
