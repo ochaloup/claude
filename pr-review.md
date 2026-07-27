@@ -308,8 +308,8 @@ Include, in this order:
 
 Table columns:
 
-| ID | Description | Status / Recommendation |
-|----|-------------|--------|
+| ID | Description | Status / Recommendation | Links |
+|----|-------------|--------|-------|
 
 - **ID** — e.g. `P1-R1#3`.
 - **Description** — one-line summary (≤ 150 chars) of the finding: what / where.
@@ -317,6 +317,19 @@ Table columns:
 - **Status** — one of `PRESENT`, `OUTDATED`, `UNCERTAIN`, `STILL_PRESENT (Rn)`
   (carried from round `n`).
 - **Recommendation** - is your honest recommendation as as short sentence (or two) what to do with the finding
+- **Links** — bare raw GitHub URL(s) so the reader can copy/paste the exact
+  location. Print the full URL as plain text — do NOT use markdown link syntax
+  (`[label](url)`), which hides the URL behind a label in terminals. Include
+  whichever apply, each prefixed with a short tag:
+  - The originating comment URL (`url` from the GraphQL fetch in step 6) —
+    prefix `comment: <url>`.
+  - For findings tied to a file/line, a blob link to the code at the PR head:
+    `code: https://github.com/OWNER_REPO/blob/HEAD_BRANCH/<path>#L<line>`
+    (use `path`/`line` from the comment; for a range use `#L<start>-L<end>`).
+  Put several URLs in one cell when relevant, separated by a `<br>` so each stays
+  on its own line and remains fully selectable (e.g.
+  `comment: https://… <br> code: https://…`). If no specific URL exists, print the
+  bare PR URL (`PR_URL`).
 
 Above the table print the absolute saved-file path from step 11 on its own line.
 
