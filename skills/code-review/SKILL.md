@@ -14,6 +14,15 @@ Determine the base ref as follows:
 - If an argument `--base <ref>` is provided in this prompt, use that ref.
 - Otherwise, try `git diff main` first; if that fails or returns nothing, try `git diff master`.
 
+## Shell discipline
+
+Every bash call this skill makes — and every one its subagents make — is a single
+plain command: no `$(...)` or backticks, no `&&`/`;` chains, no redirects or
+heredocs. Those shapes are classified as dangerous before allowlist matching and
+stall the review on a permission prompt. When a command needs a computed value
+(merge-base, branch name, PR number), resolve it in its own call and substitute the
+literal result into the next one.
+
 ## Engine selection
 
 **Default is lean: your own analysis + codex, verified inline. Nothing else.**
@@ -85,9 +94,8 @@ Always run it.
    ```
    codex exec review --base <ref>
    ```
-   Use `Bash` with `run_in_background=true`. Do NOT redirect output to a file — a
-   redirect triggers an interactive permission prompt; the harness captures
-   stdout/stderr of the background call.
+   Use `Bash` with `run_in_background=true`; the harness captures stdout/stderr of
+   the background call, so no redirect is needed.
 2. **Do your own review** meanwhile. Do not wait for codex — your analysis is
    independent and primary.
 3. **When codex finishes**, read its captured output from the background task result.
