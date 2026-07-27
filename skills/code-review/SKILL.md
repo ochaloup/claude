@@ -1,8 +1,8 @@
 ---
 name: code-review
-description: Review this branch's changes against a base ref using git diff, folding in a parallel codex review. Assigns round-scoped finding IDs, persists the full report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
+description: Review this branch's changes against a base ref using git diff, pooling three engines — your own objectives, a parallel codex review, and Claude Code's built-in multi-agent review workflow — then verifying every candidate before it becomes a finding. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
 when_to_use: reviewing branch/uncommitted work against a base ref; for reviewer feedback on an open PR use pr-review instead
-argument-hint: "[--base <ref>]"
+argument-hint: "[--base <ref>] [low|high|xhigh|max]"
 ---
 
 # Code Review
@@ -13,6 +13,10 @@ Defaults to main/master if `--base` is not provided.
 Determine the base ref as follows:
 - If an argument `--base <ref>` is provided in this prompt, use that ref.
 - Otherwise, try `git diff main` first; if that fails or returns nothing, try `git diff master`.
+
+Determine the engine level: if a bare `low`, `high`, `xhigh`, or `max` token is
+present in the invocation, that is LEVEL; otherwise LEVEL is `high`. It controls
+only the built-in engine's fan-out, not your own analysis.
 
 For each changed file, read the full file — not just the diff — to understand context, 
 detect duplication, and identify broken invariants.
@@ -97,6 +101,38 @@ In parallel with your own analysis, ask `codex` to review the same diff and fold
 If `codex` is not installed (`which codex` fails) or the background call errors, skip the raw subsection and note the reason in one line — do not block the rest of the review.
 
 
+## Built-in review engine
+
+Claude Code ships a multi-agent review pipeline — Scope → Find → Verify → Sweep →
+Synthesize — registered as a workflow named `code-review`. Run it as a third engine.
+
+Kick it off in the same step as codex, right after the base ref is resolved:
+
+```
+Workflow({ name: "code-review", args: "<LEVEL> <BASE_REF>" })
+```
+
+Invoking this skill is itself the opt-in for that Workflow call — do not ask for
+separate confirmation. The workflow's own concurrency limit governs its fan-out.
+
+It returns immediately with a task ID and notifies on completion, so continue with
+your own analysis meanwhile. Its findings arrive already verified by its internal
+per-candidate verifier and carry a CONFIRMED or PLAUSIBLE verdict — carry that
+verdict through instead of re-verifying.
+
+Fold its findings into the compound review on the same terms as codex: valid and
+missed → add; duplicate of yours → keep your version; wrong → drop from the
+compound review, leaving it in the raw subsection for audit.
+
+Its five correctness angles (line-by-line scan, removed-behavior audit, cross-file
+caller tracing, language pitfalls, wrapper/proxy routing) overlap your Objectives
+only partially — do not treat its silence on Objectives 7-9 as a clean bill, since
+it has no notion of typescript-common reuse or K8s/IaC cross-file consistency.
+
+If workflows are unavailable or the call errors, skip this engine and note the
+reason in one line — do not block the rest of the review.
+
+
 ## Reporting
 
 - Check if there is an open PR for the current branch using `gh pr view --json url,number` (fall back to `gh pr list --head <branch>`).
@@ -122,6 +158,31 @@ can pick up where the last one left off.
    - **ADDRESSED** — gone. Record ID in tally only.
    - **STILL_PRESENT** — carry forward, keep original ID.
    - **UNCERTAIN** — carry forward, keep original ID.
+
+## Verify candidates (3-state ladder)
+
+Before assigning IDs, pool the candidates from all three engines and put the
+unverified ones through one verification pass. Candidates returned by the built-in
+workflow are already verified — keep their verdict and skip them here.
+
+1. **Dedup.** Collapse candidates pointing at the same line and the same mechanism,
+   keeping the one with the most concrete failure scenario.
+2. **Verify each remaining candidate.** Give the verifier the diff, the relevant
+   file(s), and that candidate alone. It returns exactly one of:
+   - **CONFIRMED** — the defect is real and the failure scenario holds.
+   - **PLAUSIBLE** — not confirmable from the code at hand, but the reasoning stands
+     and it warrants a human look.
+   - **REFUTED** — the reasoning does not survive contact with the code.
+   Delegate to subagents when available, at most 4 in parallel; otherwise verify
+   sequentially in this context.
+3. **Keep CONFIRMED and PLAUSIBLE. Drop REFUTED** — a refuted candidate reaches
+   neither the report, the saved MD, nor the table.
+
+A candidate with no concrete failure scenario is not a finding; drop it rather than
+filing it as PLAUSIBLE. Every surviving finding carries its verdict into the report.
+
+Verification decides whether a candidate is real — it does not soften an objective.
+Never downgrade a CONFIRMED finding to PLAUSIBLE to avoid reporting it.
 
 ## Finding IDs
 
@@ -161,6 +222,7 @@ The MD must contain **all detail useful for fixing**:
 - File path + line range + clickable GitHub permalink for every finding
 - Code snippets / current code
 - Concrete suggested fix
+- Verdict (`CONFIRMED` / `PLAUSIBLE`) and which engine surfaced it
 - For carried-forward findings: original ID, round it came from, re-check notes.
 
 Every finding's body uses its `<ID>` as the heading anchor (e.g. `### P1-R1#1 — ...`).
@@ -182,7 +244,8 @@ Table columns:
 
 - **ID** — e.g. `P1-R1#1`.
 - **Description** — one-line summary (≤ 150 chars) of what / where.
-- **Recommendation** — concise concrete fix (≤ 80 chars). For carried-forward
+- **Recommendation** — concise concrete fix (≤ 80 chars). Append ` (PLAUSIBLE)` for
+  findings that verified as PLAUSIBLE rather than CONFIRMED. For carried-forward
   items append ` (STILL_PRESENT from Rn)` or ` (UNCERTAIN from Rn)`.
 
 Above the table print the absolute saved-file path from step 2 on its own line.
@@ -191,8 +254,9 @@ Above the table print the absolute saved-file path from step 2 on its own line.
 
 Whether `save-plan` creates a new file or a new `REVIEW` chapter inside an existing multi-type file, the chapter body must be ordered as:
 
-1. **Compound review** (first, primary) — your findings with relevant codex findings folded in. This is the actionable part the reviewer reads. Each finding uses its `<ID>` (e.g. `P1-R1#1`).
+1. **Compound review** (first, primary) — your verified findings with the codex and built-in-engine findings folded in. This is the actionable part the reviewer reads. Each finding uses its `<ID>` (e.g. `P1-R1#1`) and carries its verdict.
 2. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries from prior rounds, original IDs preserved.
 3. **Raw codex review** (subsection, e.g. `### Raw codex review`) — the verbatim captured output of the `codex exec review` background call. Do not edit, trim, summarize, or reformat it; preserve it as-is so the reader can audit independently.
+4. **Raw built-in review** (subsection, e.g. `### Raw built-in review`) — the verbatim report returned by the `code-review` workflow, including candidates it REFUTED, under the same no-editing rule.
 
-If codex was unavailable or failed, omit the raw subsection and add one line under the compound review noting why (e.g. `codex unavailable: <reason>`).
+For any engine that was unavailable or failed, omit its raw subsection and add one line under the compound review noting why (e.g. `codex unavailable: <reason>`, `built-in engine unavailable: <reason>`). Say which engines actually ran — a review that silently lost an engine must not read as a three-engine review.
