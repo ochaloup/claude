@@ -40,6 +40,18 @@ would benefit from one — e.g. it merges processes or turns a `T` into a `Vec<T
 say so in one line at the end of the report and let the user re-run with the flag.
 Do not escalate on your own initiative.
 
+## When lean is not enough
+
+Right after resolving the base ref, run `git diff --stat <ref>` and count the
+changed files. Over ~10 changed files, or when one edit is repeated across many
+call sites, a single-pass lean review does not cover the diff — one reader catches
+the first instance of a repeated defect and misses the third.
+
+Do not silently narrow the scope, and do not escalate on your own. Review the whole
+diff as best you can and make the shortfall the **first line** of the chat summary:
+
+`Lean coverage is insufficient for this diff (<N> files) — re-run with --deep.`
+
 ## Reading policy
 
 Read the diff first. Then read **only** what you need to judge it:
@@ -84,6 +96,30 @@ expensive, and it rarely changes a verdict.
 
 Only report problems. No praise, no neutral observations.
 
+## Targeted checks
+
+The objectives say what to look for; these say how to find it without re-reading the
+repo. Each one is a grep over the diff's own symbols, not a file read — run it, then
+judge the hits. This list is what keeps the lean path from being a shallow path.
+
+- **Every caller of a changed signature.** For any function, method or type whose
+  signature, return shape, nullability or error behaviour changed, grep its name
+  repo-wide and check each call site. Never assume the diff updated them all.
+- **Early returns and error paths.** A `return`/`throw`/`?`/`catch` added to or
+  removed from a touched function — establish what now skips the code below it.
+- **Missing `await`.** Grep the diff for async calls without `await`, and for
+  `.map(async` / `forEach(async` with no awaited `Promise.all`.
+- **Resource lifecycle.** Connections, locks, streams, subscriptions and intervals
+  created in the diff: opened once, or once per call? Released on every path,
+  including the error path?
+- **Money arithmetic.** Token amounts, rates and balances on JS `number` rather than
+  `Decimal`/`bigint`; float equality; rounding direction on a value that leaves the
+  process.
+- **Test coverage of changed branches.** For each new conditional branch, grep the
+  test files for the symbol. Name the uncovered scenario — do not just note absence.
+- **Reuse before new utility code.** For every new helper in the diff, grep for an
+  existing equivalent (and typescript-common for TS) before accepting it.
+
 ## Parallel codex review
 
 Codex runs on a separate quota, so it is the cheapest second opinion available.
@@ -112,8 +148,12 @@ Claude Code ships a multi-agent review pipeline registered as a workflow named
 is opt-in.
 
 ```
-Workflow({ name: "code-review", args: "high <BASE_REF>" })
+Workflow({ name: "code-review", args: "<LEVEL> <BASE_REF>" })
 ```
+
+`LEVEL` is `high` for `--deep` and `xhigh` for `max`. Never run it below `high` —
+`--deep` is the pre-merge verification pass, and a discounted run of the expensive
+engine is the worst of both: you pay for it and still do not know what it missed.
 
 Passing `--deep` is itself the opt-in — do not ask for separate confirmation. It
 returns immediately with a task ID and notifies on completion, so continue with
@@ -127,8 +167,14 @@ Its correctness angles overlap your Objectives only partially — do not treat i
 silence on Objectives 7-9 as a clean bill, since it has no notion of
 typescript-common reuse or K8s/IaC cross-file consistency.
 
-If workflows are unavailable or the call errors, note the reason in one line and
-continue.
+**If the `Workflow` tool is not available in this session, or the call errors, the
+review the user asked for did not happen.** Do not bury it. Say so as the first line
+of the chat summary, in these words:
+
+`--deep requested but the built-in engine did not run (<reason>) — this is a lean
+review only.`
+
+Then continue with the lean review. A degraded run must never read as a deep one.
 
 ## Topology engine — only with `--topology` or `max`
 
@@ -159,7 +205,9 @@ not re-verify. Two handling rules specific to this engine:
 
 Report `not_verified_due_to_cap` entries rather than dropping them silently.
 
-If the skill is unavailable or errors, note the reason in one line and continue.
+If the skill is unavailable or errors, report it the same way as a failed built-in
+engine: first line of the chat summary, naming the reason, stating that the
+requested engine did not run.
 
 ## Reporting
 
@@ -181,8 +229,10 @@ can pick up where the last one left off.
 3. **Round detection:**
    - No matching file → `ROUND = 1`.
    - Matching file → parse findings for the highest `R<n>` ID and set `ROUND = highest + 1`.
-4. **Prior re-verification:** for each finding in the most recent matching file,
-   re-check against current code. Classify:
+4. **Prior re-verification:** read only the most recent matching file — it already
+   carries forward everything still unaddressed from earlier rounds, so older files
+   add context without adding findings. For each finding in it, re-check against
+   current code. Classify:
    - **ADDRESSED** — gone. Record ID in tally only.
    - **STILL_PRESENT** — carry forward, keep original ID.
    - **UNCERTAIN** — carry forward, keep original ID.
@@ -198,8 +248,9 @@ engine are already verified — keep their verdict and skip them here.
 2. **Verify each remaining candidate inline, in this context** — re-read the
    relevant code and argue against the candidate. Do not spawn verifier subagents;
    you already have the files in context and a subagent would re-read them from
-   cold. Only under `--deep` or `max`, and only when there are more than 8
-   unverified candidates, delegate to at most 4 parallel subagents.
+   cold. **The default path spawns no subagents at all.** Only under `--deep` or
+   `max`, and only when there are more than 8 unverified candidates, delegate to at
+   most 4 parallel subagents.
    Each candidate returns exactly one of:
    - **CONFIRMED** — the defect is real and the failure scenario holds.
    - **PLAUSIBLE** — not confirmable from the code at hand, but the reasoning stands
@@ -238,6 +289,11 @@ the saved REVIEW chapter must start with a line:
 `Reviewed: <YYYY-MM-DD HH:MM TZ>`
 
 ### Step 1 — Chat summary
+
+**Coverage banner first.** If any of these apply, they lead the summary, above the
+prose, in this order — a requested engine that did not run, then a lean run that did
+not cover the diff. Never demote one into a closing footnote; they change how much
+the findings below are worth.
 
 - Write a short prose summary.
 - If a PR exists, the summary MUST include the PR URL and clickable GitHub links (show directly in console whole link! with whole hash etc, no simplification via some md formatting) to all findings.
@@ -290,8 +346,9 @@ The chapter body is ordered as:
    `topology/fan-out`).
 2. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries
    from prior rounds, original IDs preserved.
-3. **Raw codex review** — the verbatim captured output of the `codex exec review`
-   call, unedited, so the reader can audit independently.
+3. **Raw codex review** — codex's findings verbatim, so the reader can audit
+   independently. Drop only its reasoning preamble and progress chatter; never edit,
+   merge or summarise a finding itself.
 
 Do **not** paste the built-in workflow's or the topology engine's raw output into
 the report — they are long and re-inflate context for little value. Instead, for
@@ -299,6 +356,19 @@ each engine that ran, record one line: how many candidates it produced, how many
 survived, and for topology its thesis, which lenses fired, and any
 `not_verified_due_to_cap` entries. The thesis in particular must appear — every
 topology finding is conditional on it.
+
+### Topology self-check (one line, always)
+
+When the topology engine did not run, spend no agents and no file reads — just check
+the diff you have already read against its triggers: one→many or many→one
+(processes, queues, pods, databases, schedules; scalar ↔ collection); a new
+discriminator on shared storage; a type gaining a collection variant; a per-instance
+constructor now called per something else.
+
+If a trigger fires, end the report with one line naming it:
+`Topology trigger: <what> — re-run with --topology to cover it.`
+If none fires, say `Topology triggers: none` and leave it there. Do not run the
+engine on your own initiative either way.
 
 End with one line naming which engines actually ran and how many findings each
 contributed. A review that silently lost an engine must not read as a full-fanout
