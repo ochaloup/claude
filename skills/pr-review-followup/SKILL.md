@@ -189,7 +189,13 @@ current HEAD of the PR branch and classify:
 
 Do not renumber prior IDs.
 
-## 5. Assign IDs to current-run findings
+## 5. Verify against description in notion task
+
+If you have access to notion (Marinade the most probably) and the PR title
+has got with format [GEN-<number>] then find the Notion task with that `GEN` id
+and read the description and verify that the implemented code matches the description.
+
+## 6. Assign IDs to current-run findings
 
 Assign IDs to findings produced in steps 2 (conversation enrichment) and 3
 (scoped code-review + backwards-check).
@@ -205,7 +211,7 @@ Assign IDs to findings produced in steps 2 (conversation enrichment) and 3
 
 Carried-forward prior findings keep their original IDs.
 
-## 6. Unified detailed report (for the MD file)
+## 7. Unified detailed report (for the MD file)
 
 Combine everything into a single document. Plain text, no emoji, no icons.
 
