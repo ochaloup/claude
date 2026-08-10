@@ -1,6 +1,6 @@
 ---
 name: maintenance-task
-description: File a task in the Marinade Notion "General System Maintenance/Improvements" project — Backlog status, chalda as Assignee and Notify, severity mapped to Priority. Writes a short why-first task body (Context / Why it matters / Intended fix / Reference), never a step-by-step implementation plan.
+description: File a task in the Marinade Notion "General System Maintenance/Improvements" project — Backlog status, chalda as Assignee and Notify, severity mapped to Priority. Writes a skimmable why-first task body (Why / What / Intended fix / Reference) — two sentences of intent, then bullets — never a step-by-step implementation plan.
 when_to_use: a defect, risk, or maintenance item found during work needs to be recorded as a Notion task rather than fixed now
 argument-hint: "[low|medium|high|critical] <what the task is about>"
 ---
@@ -60,34 +60,106 @@ Bad: `Improve settlement error handling`.
 Exactly these four sections, in this order:
 
 ```markdown
-## Context
-## Why it matters
+## Why
+## What
 ## Intended fix (direction, not prescription)
 ## Reference
 ```
 
-- **Context** — one short paragraph. What broke or what is wrong, and where.
-  Name the concrete trigger and the real identifiers (file, instruction, build,
-  epoch, address). State the mechanism once; do not walk through the code.
-- **Why it matters** — one short paragraph. The consequence of leaving it. This
-  is the section that justifies someone's time: blast radius, who gets paged,
-  what stays broken or stranded. If a workaround already exists, say why it is
-  not enough.
-- **Intended fix** — 2–4 sentences, direction only. Name the *property the fix
-  must achieve* and the constraint it must respect. No code, no file-by-file
-  plan, no ordered steps.
+A reader gets a few seconds. They must land on *Why*, understand the point, and
+be able to stop there. Prose lives only in *Why*; everything below it is bullets.
+
+- **Why** — the intent, as prose. Two sentences carry it: what is wrong or
+  missing, then why it matters — the consequence of leaving it, blast radius, who
+  gets paged, what stays broken or stranded. Add one or two more sentences on the
+  goal (the end state the system should reach) only when the task has one that is
+  not obvious from the first two. Four sentences is the ceiling; two is the norm.
+  If a workaround already exists, say in half a sentence why it is not enough.
+- **What** — 2–4 bullets, one sentence each. The defect and where it lives:
+  real identifiers (file, instruction, build, epoch, address) and the trigger.
+  State the mechanism once. Never walk through the code.
+- **Intended fix** — 1–3 bullets, direction only. Name the *property the fix must
+  achieve* and the constraint it must respect. No code, no file-by-file plan, no
+  ordered steps.
 - **Reference** — bullets of bare identifiers only. Build numbers, addresses,
-  commits, URLs. No prose.
+  commits, URLs. No prose. Every entry must be openable by the Marinade
+  audience — see *Links and attachments*.
+
+Detail that does not fit these limits is not squeezed in. It goes into an
+attached document (see *Links and attachments*) or it is dropped.
+
+The shape to match:
+
+```markdown
+## Why
+A single deactivated stake account makes `fund-settlement` underflow and abort
+the whole batch, so payouts stall for every validator in the epoch. Funding
+should be per-settlement independent — one bad source account skips, the run
+continues.
+
+## What
+- `fund_settlement` subtracts withdrawn lamports without checking the source
+  stake is still delegated
+- Hit in epoch 918 by a stake deactivated between init and fund
+- Retries pick the same account, so the batch never completes
+
+## Intended fix
+- Tolerate a non-delegated source account and skip it, leaving the remaining
+  settlements in the batch fundable
+- The skip must surface in the pipeline notification, not pass silently
+
+## Reference
+- https://buildkite.com/marinade/fund-settlements/builds/1234
+```
+
+## Links and attachments
+
+The task is read by people who are not me, on machines that are not mine. Every
+link must resolve for them.
+
+**Link these** — anything visible org-wide or publicly: GitHub PRs, issues,
+commits, blob/line links; Buildkite builds; other Notion pages; Slack
+permalinks in the Marinade workspace; docs, dashboard and API URLs; on-chain
+addresses and transaction signatures. Prefer these over any description of
+where the evidence sits.
+
+**Never link or name these** — a local filesystem path, a `$SAVE_PLAN_PATH`
+document, a Dropbox or personal-drive path, a scratchpad file, a `localhost`
+URL, or any repo the org cannot see. Not as a link, not as a bare filename, not
+as "see my investigation notes". If that is the only place the evidence lives,
+upload it or restate the finding inline instead.
+
+**Uploading local investigation notes.** Their content is welcome; their
+filename is useless to the reader. Never name a local file and stop there — that
+is the failure this section exists to prevent. To include one:
+
+1. `Read` the file.
+2. Call `notion-create-attachment` with `filename` (keep the `.md` extension)
+   and `content` set to the file's full text. The cap is 200 KiB after UTF-8
+   encoding; above that, call `notion-create-file-upload`, POST the file to the
+   returned `upload_url` with the returned `upload_headers`, then call
+   `notion-create-attachment` with the resulting `source_file_id`.
+3. Put the returned `markdown_source` on its own line in the `content` passed
+   to `notion-create-pages`, at the end of `Reference`.
+
+The page is still created by `notion-create-pages` — the attachment call only
+prepares the file. Attached content does not count against the body word
+budget, but strip anything not fit for a general audience (credentials, tokens,
+absolute home paths, unrelated work) before uploading.
 
 ## Style rules
 
 The task is informative about **why**, not **what**. A reader must finish it
 knowing why it matters and roughly where to start — not how to write the patch.
+Informative and really concise, both at once.
 
-- Whole body under ~250 words. If it runs longer, cut from *Intended fix* first.
+- Whole body under ~150 words. If it runs longer, cut from *Intended fix* first,
+  then from *What*. Never cut *Why* to fit.
+- One sentence per bullet, no terminal period. No sub-bullets, no bullet that
+  grows into a paragraph.
 - No code blocks. Inline identifiers in backticks are fine.
 - No `Steps`, `Implementation plan`, `Acceptance criteria`, or `Testing` sections.
-- No bullet lists in Context or Why it matters — prose paragraphs.
+- Implementation detail belongs in an attached document, never in the body.
 - Never restate what the code does. State the intent it violates.
 - No hedging ("it might be worth considering") and no filler ("As you know").
 - Write for a colleague who knows the system but not this bug.
