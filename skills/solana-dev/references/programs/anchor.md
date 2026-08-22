@@ -5,6 +5,28 @@ description: Write Solana programs using the Anchor framework for fast iteration
 
 # Programs with Anchor (default choice)
 
+## Contents
+
+- [When to use Anchor](#when-to-use-anchor)
+- [Core Advantages](#core-advantages)
+- [Core Macros](#core-macros)
+- [Account Types](#account-types)
+- [Account Constraints](#account-constraints)
+- [Account Discriminators](#account-discriminators)
+- [Instruction Patterns](#instruction-patterns)
+- [Cross-Program Invocations (CPIs)](#cross-program-invocations-cpis)
+- [Error Handling](#error-handling)
+- [Token Accounts](#token-accounts)
+- [LazyAccount (Anchor 0.31+)](#lazyaccount-anchor-031)
+- [Zero-Copy Accounts](#zero-copy-accounts)
+- [Remaining Accounts](#remaining-accounts)
+- [Version Management](#version-management)
+- [Compatibility Notes for Anchor 0.32.0](#compatibility-notes-for-anchor-0320)
+- [Security Best Practices](#security-best-practices)
+- [Testing](#testing)
+- [IDL and Clients](#idl-and-clients)
+- [Migrations](#migrations)
+
 ## When to use Anchor
 Use Anchor by default when:
 - You want fast iteration with reduced boilerplate
@@ -205,8 +227,8 @@ pub token_program: Interface<'info, TokenInterface>,
 Heap-allocated, read-only account access for efficient memory usage:
 
 ```rust
-// Cargo.toml
-anchor-lang = { version = "0.31.1", features = ["lazy-account"] }
+// Cargo.toml — match the version to your Anchor CLI (1.1.x current)
+anchor-lang = { version = "1.1.2", features = ["lazy-account"] }
 
 // Usage
 pub account: LazyAccount<'info, CustomAccountType>,
@@ -250,9 +272,11 @@ pub fn batch_operation(ctx: Context<BatchOp>, amounts: Vec<u64>) -> Result<()> {
 
 ## Version Management
 
-- Use AVM (Anchor Version Manager) for reproducible builds
+- Current stable: **Anchor 1.1.x** (latest: 1.1.2, Jun 2026). CI-tested Solana CLI pairing: 3.1.10.
+- Use AVM (Anchor Version Manager) for reproducible builds. Install AVM from git (`cargo install --git https://github.com/solana-foundation/anchor avm --force` — the `avm` crate on crates.io is unrelated), then `avm install latest` / `avm use latest`. AVM supports `avm self-update` and pre-releases (`avm install latest-pre-release`).
 - Keep Solana CLI + Anchor versions aligned in CI and developer setup
 - Pin versions in `Anchor.toml`
+- Anchor 1.1.2 tightened inter-crate pins: keep all `anchor-*` crates on the exact same version
 
 ## Compatibility Notes for Anchor 0.32.0
 
@@ -264,7 +288,7 @@ cargo update constant_time_eq --precise 0.4.1
 cargo update blake3 --precise 1.5.5
 ```
 
-Additionally, if you encounter warnings about `solana-program` conflicts, add `solana-program = "3"` to the `[dependencies]` section in your program's `Cargo.toml` file (e.g., `programs/your-program/Cargo.toml`).
+Additionally, if you encounter warnings about `solana-program` conflicts, pin the v2 crate line explicitly by adding `solana-program = "2"` to the `[dependencies]` section in your program's `Cargo.toml` file (e.g., `programs/your-program/Cargo.toml`). Anchor 0.32.x is on the Solana **v2** crate ecosystem — do **not** pin `solana-program = "3"` on a 0.32 project; it forces a resolution incompatible with Anchor 0.32's own dependency graph. Bumping all `solana-*` crates to `^3` happens only as part of the v0.32 → v1 migration (see below).
 
 
 ## Security Best Practices
@@ -287,26 +311,35 @@ Additionally, if you encounter warnings about `solana-program` conflicts, add `s
 
 ## Testing
 
-- Use `NO_DNA=1 anchor test` for end-to-end tests (when run by an agent)
-- Use `NO_DNA=1 anchor build` for builds (when run by an agent)
-- Prefer Mollusk or LiteSVM for fast unit tests
-- Use Surfpool for integration tests with mainnet state
+- `anchor test` (and `anchor localnet`) default to **Surfpool** as the local network in Anchor 1.0+ — see [../surfpool/overview.md](../surfpool/overview.md)
+- `anchor init` scaffolds a LiteSVM test template by default in Anchor 1.0+
+- Use `NO_DNA=1 anchor test` / `NO_DNA=1 anchor build` when run by an agent
+- Prefer Mollusk or LiteSVM for fast unit tests; Surfpool for integration tests with mainnet state — see [../testing.md](../testing.md)
 
 See [no-dna.org](https://no-dna.org) for the `NO_DNA` standard.
 
 ## IDL and Clients
 
 - Treat the program's IDL as a product artifact
+- IDL management uses Program Metadata in Anchor 1.0+ (`anchor idl init` / `anchor idl upgrade`; `anchor idl fetch-historical` in 1.1+)
 - Prefer generating Kit-native clients via Codama
-- If using Anchor TS client in Kit-first app, put it behind web3-compat boundary
+- The Anchor TS client (`@anchor-lang/core`) works alongside Kit code; for new client work prefer Codama-generated Kit clients
 
 ## Migrations
 
 ### Anchor v0.32 → v1
 
-- **Dependencies** — bump `anchor-lang` and `anchor-spl` to `^1`, and all `solana-*` crates to `^3`.
+- **Dependencies** — bump `anchor-lang` and `anchor-spl` to `^1` (latest: 1.1.2), and all `solana-*` crates to `^3`.
 - **CPI context** — `CpiContext::new` now takes a program ID (`Pubkey`) instead of a program `AccountInfo`. Remove the program account from the accounts struct.
 - **TypeScript** — replace `@coral-xyz/anchor` with `@anchor-lang/core`.
 - **IDL** — IDL management is being moved off program, **mandatory** actions required.
+- **Duplicate mutable accounts** — disallowed by default; annotate intentional cases with the `dup` constraint.
 
-See [anchor/migrating-v0.32-to-v1.md](./anchor/migrating-v0.32-to-v1.md) for the full checklist and before/after examples.
+See [anchor/migrating-v0.32-to-v1.md](../anchor/migrating-v0.32-to-v1.md) for the full checklist and before/after examples.
+
+### Anchor 1.0 → 1.1
+
+- anchor-lang MSRV is Rust 1.89; TS package requires Node ≥ 20.18
+- anchor-client supports versioned transactions
+- New: `verifiedBuild` (OtterSec verify.osec.io), multiple named scripts in `Anchor.toml`, `anchor idl fetch-historical`
+- 1.1.2: keep all `anchor-*` crates pinned to the same exact version

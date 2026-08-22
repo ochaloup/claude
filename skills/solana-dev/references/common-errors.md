@@ -5,6 +5,20 @@ description: Diagnose and fix common errors encountered when building on Solana,
 
 # Common Solana Development Errors & Solutions
 
+## Contents
+
+- [GLIBC Errors](#glibc-errors)
+- [Rust / Cargo Errors](#rust--cargo-errors)
+- [Build Errors](#build-errors)
+- [Installation Errors](#installation-errors)
+- [Testing Errors](#testing-errors)
+- [Anchor Version Migration Issues](#anchor-version-migration-issues)
+- [Miscellaneous Errors](#miscellaneous-errors)
+- [LiteSVM Errors](#litesvm-errors)
+- [Platform Tools Errors](#platform-tools-errors)
+- [edition2024 Crate Incompatibility (Cargo 1.84.0)](#edition2024-crate-incompatibility-cargo-1840)
+- [Verified Test Results (Debian 12, Jan 2026)](#verified-test-results-debian-12-jan-2026)
+
 ## GLIBC Errors
 
 ### `GLIBC_2.39 not found` / `GLIBC_2.38 not found`
@@ -18,9 +32,12 @@ anchor: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found (require
 1. **Upgrade OS** (best): Ubuntu 24.04+ has GLIBC 2.39
 2. **Build from source:**
    ```bash
+   # For Anchor 1.1.x (current):
+   cargo install --git https://github.com/solana-foundation/anchor --tag v1.1.2 anchor-cli
+
    # For Anchor 0.31.x:
    cargo install --git https://github.com/solana-foundation/anchor --tag v0.31.1 anchor-cli
-   
+
    # For Anchor 0.32.x:
    cargo install --git https://github.com/solana-foundation/anchor --tag v0.32.1 anchor-cli
    ```
@@ -243,7 +260,7 @@ Error: failed to start validator
    ```
 4. **Consider Surfpool** as a modern alternative to `solana-test-validator`:
    ```bash
-   curl --proto '=https' --tlsv1.2 -LsSf https://github.com/txtx/surfpool/releases/latest/download/surfpool-installer.sh | sh
+   curl -sL https://run.surfpool.run/ | bash
    ```
 
 ### Anchor test fails with `Connection refused` / IPv6 issue
@@ -610,7 +627,7 @@ Environment: Rust 1.93, Solana CLI 2.2.16, Anchor CLI 0.30.1, Node 22.22.0, GLIB
 | litesvm npm (GLIBC 2.36) | `npm install litesvm && require('litesvm')` | ❌ FAIL | `undefined symbol: __isoc23_strtol` — requires GLIBC ≥2.38 |
 | @solana/web3.js CJS | `require('@solana/web3.js')` | ✅ PASS | Keypair, Connection etc. available |
 | @solana/web3.js ESM | `import * as web3 from '@solana/web3.js'` | ✅ PASS | Full ESM support on Node 22 |
-| @solana/kit (web3.js v2) ESM | `import('@solana/kit')` | ✅ PASS | ESM-only, works on Node 22 |
+| @solana/kit ESM | `import('@solana/kit')` | ✅ PASS | ESM-only, works on Node 22 |
 | @coral-xyz/anchor CJS | `require('@coral-xyz/anchor')` | ✅ PASS | Program, Provider etc. available |
 | @coral-xyz/anchor ESM | `import * as anchor from '@coral-xyz/anchor'` | ✅ PASS | Full ESM support on Node 22 |
 | IDL generation | `anchor idl build` (from program dir) | ✅ PASS | Generates valid JSON IDL with CLI 0.30.1 |

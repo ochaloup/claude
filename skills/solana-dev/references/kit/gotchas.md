@@ -64,9 +64,9 @@ import type { Instruction } from '@solana/kit';
 **Cause:** Trying to send unsigned message (manual pipeline only).
 
 ```ts
-// ✅ Fix: Assert fully signed
-import { assertTransactionMessageIsFullySigned } from '@solana/transaction-messages';
-assertTransactionMessageIsFullySigned(message);
+// ✅ Fix: Assert the signed transaction is fully signed
+import { assertIsFullySignedTransaction } from '@solana/transactions';
+assertIsFullySignedTransaction(signedTransaction);
 ```
 
 ### "Missing blockhash lifetime"
@@ -75,8 +75,8 @@ assertTransactionMessageIsFullySigned(message);
 
 ```ts
 // ✅ Fix: Assert lifetime exists
-import { assertTransactionMessageHasBlockhashLifetime } from '@solana/transaction-messages';
-assertTransactionMessageHasBlockhashLifetime(message);
+import { assertIsTransactionMessageWithBlockhashLifetime } from '@solana/transaction-messages';
+assertIsTransactionMessageWithBlockhashLifetime(message);
 ```
 
 ### `signAndSendTransactionMessageWithSigners` type error
@@ -197,8 +197,8 @@ if (!account.exists) {
 | Plugin ordering type error | Install dependencies before dependents (`signer()` before `solanaRpc`/`litesvm`) |
 | Forgot to `await` async client | `const client = await createClient().use(signerFromFile(...)).use(solanaLocalRpc())` |
 | `IInstruction` doesn't exist | Use `Instruction` from `@solana/kit` |
-| "Transaction message must be signed" | `assertTransactionMessageIsFullySigned(msg)` |
-| "Missing blockhash lifetime" | `assertTransactionMessageHasBlockhashLifetime(msg)` |
+| "Transaction message must be signed" | `assertIsFullySignedTransaction(signedTx)` |
+| "Missing blockhash lifetime" | `assertIsTransactionMessageWithBlockhashLifetime(msg)` |
 | Blockhash expired after CU estimation | Refresh blockhash AFTER `estimateAndUpdateCU()` |
 | `signAndSendTransactionMessageWithSigners` type error | Use `setTransactionMessageFeePayerSigner` (not address) |
 | Account doesn't exist runtime error | `assertAccountExists(account)` before decode |

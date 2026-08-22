@@ -1,6 +1,6 @@
 ---
 title: Payments & Commerce
-description: Build checkout flows, payment buttons, and QR-based payment requests using Commerce Kit and Solana Pay.
+description: Build checkout flows, payment buttons, and QR-based payment requests using Solana Pay conventions, Kit instruction builders, and Kora for gasless flows.
 ---
 
 # Payments and commerce (optional)
@@ -11,24 +11,20 @@ Use this guidance when the user asks about:
 - payment request URLs / QR codes
 - fee abstraction / gasless transactions
 
-## Commerce Kit (preferred)
-Use Commerce Kit as the default for payment experiences:
-- drop-in payment UI components (buttons, modals, checkout flows)
-- headless primitives for building custom checkout experiences
-- React hooks for merchant/payment workflows
-- built-in payment verification and confirmation handling
-- support for SOL and SPL token payments
+## Building payments with Kit (default)
 
-### When to use Commerce Kit
-- You want a production-ready payment flow with minimal setup
-- You need both UI components and headless APIs
-- You want built-in best practices for payment verification
-- You're building merchant experiences (tipping, checkout, subscriptions)
+Build payment flows directly on `@solana/kit` + `@solana-program/*`:
 
-### Commerce Kit patterns
-- Use the provided hooks for payment state management
-- Leverage the built-in confirmation tracking (don't roll your own)
-- Use the headless APIs when you need custom UI but want the payment logic handled
+- SOL transfers: `getTransferSolInstruction` from `@solana-program/system`
+- Token transfers: the `tokenProgram()` plugin from `@solana-program/token` (`client.token` — `transferToATA` auto-derives and creates the recipient ATA)
+- Reference/idempotency: attach a memo (`@solana-program/memo`) or a unique reference account to correlate on-chain settlement with an order
+- Confirmation: track signature status to the commitment level your UX needs (`confirmed` for UI feedback, `finalized` for irreversible fulfillment)
+
+## Solana Pay (payment requests / QR)
+
+Use the Solana Pay URL spec for request-based payments (point-of-sale, invoices, QR codes):
+- `solana:<recipient>?amount=..&spl-token=..&reference=..&label=..&message=..`
+- Verify settlement server-side by finding the transaction via the `reference` key and validating recipient, mint, and amount from chain state.
 
 ## Kora (gasless / fee abstraction)
 Consider Kora when you need:
@@ -36,9 +32,12 @@ Consider Kora when you need:
 - users paying fees in tokens other than SOL
 - a trusted signing / paymaster component
 
+Kora ships a Kit plugin (`koraPlugin` / `createKitKoraClient` from `@solana/kora`).
+
 ## UX and security checklist for payments
 - Always show recipient + amount + token clearly before signing.
 - Protect against replay (use unique references / memoing where appropriate).
 - Confirm settlement by querying chain state, not by trusting client-side callbacks.
 - Handle partial failures gracefully (transaction sent but not confirmed).
 - Provide clear error messages for common failure modes (insufficient balance, rejected signature).
+- Test settlement logic against Surfpool — set up buyer/merchant token accounts with `surfnet_setTokenAccount` and assert post-transaction balances (see [testing.md](testing.md)).

@@ -7,6 +7,15 @@ description: Solana Kit plugin architecture, all-in-one RPC/LiteSVM plugins, sig
 
 Kit clients are built by chaining `.use(plugin)` calls onto `createClient()`. Each plugin extends the client with new properties or methods. Plugins that depend on others (e.g., RPC needs a payer) must come after their dependencies — TypeScript enforces this.
 
+## Contents
+
+- [All-in-One Clients](#all-in-one-clients)
+- [Client API Surface](#client-api-surface)
+- [Signer Plugins (`@solana/kit-plugin-signer`)](#signer-plugins-solanakit-plugin-signer)
+- [Custom Client Composition](#custom-client-composition)
+- [Plugin Catalog](#plugin-catalog)
+- [Building Custom Plugins](#building-custom-plugins)
+
 ## All-in-One Clients
 
 ### Production Client (mainnet/devnet/custom)
@@ -84,6 +93,58 @@ await client.sendTransaction([myInstruction]);
 
 `litesvm()` is Node.js only. Browser/React Native builds throw.
 
+### Surfpool Test Client (`@solana/surfpool/kit`)
+
+Same shape as the LiteSVM client, but backed by a real surfnet with a full JSON-RPC endpoint, lazy mainnet forking, and cheatcodes. Use it when a test needs RPC/WebSocket or mainnet account state; use `litesvm()` when in-process is enough.
+
+```bash
+npm install @solana/kit @solana/kit-plugin-rpc @solana/kit-plugin-signer @solana/surfpool
+```
+
+```ts
+import { createClient } from '@solana/kit';
+import { surfpool } from '@solana/surfpool/kit';
+
+// Embedded surfnet on dynamic ports — async, so await the chain
+const client = await createClient().use(surfpool());
+
+client.payer;      // pre-funded KeyPairSigner, no airdrop plugin needed
+client.cheatcodes; // typed surfnet_* RPC (prefix stripped, responses unwrapped)
+client.surfnet;    // native Surfnet handle
+
+await client.sendTransaction([myInstruction]);
+client.surfnet.stop(); // wire into afterAll — teardown is not automatic
+```
+
+`surfpool()` brings its own signer, so it needs no `generatedSigner()`. Passing `surfpool({ rpcUrl })` attaches to a running `surfpool start` instead of booting one — that form is synchronous and requires a `payer` already on the client. Full reference: [../surfpool/kit-plugin.md](../surfpool/kit-plugin.md).
+
+### Browser Wallet Client (`@solana/kit-plugin-wallet`)
+
+Wallet Standard-based wallet connection as a Kit plugin — the wallet fills the signer role(s) instead of a keypair:
+
+```bash
+npm install @solana/kit @solana/kit-plugin-rpc @solana/kit-plugin-wallet
+```
+
+```ts
+import { createClient } from '@solana/kit';
+import { solanaRpc } from '@solana/kit-plugin-rpc';
+import { walletSigner } from '@solana/kit-plugin-wallet';
+
+const client = createClient()
+  .use(walletSigner({ chain: 'solana:mainnet' }))
+  .use(solanaRpc({ rpcUrl: 'https://api.mainnet-beta.solana.com' })); // bundles tx planning + sending
+
+// Discover and connect a Wallet Standard wallet
+const { wallets } = client.wallet.getState();
+await client.wallet.connect(wallets[0]);
+
+// The connected wallet is now the payer/identity
+await client.sendTransaction([myInstruction]);
+```
+
+Variants mirror the signer plugin roles: `walletSigner` (both roles), `walletPayer`, `walletIdentity`, plus `walletWithoutSigner` for discovery/connection state only. In React apps, use the hooks from `@solana/kit-plugin-wallet/react` together with `ClientProvider` from `@solana/react` — see [react.md](react.md).
+
 ---
 
 ## Client API Surface
@@ -120,17 +181,14 @@ In most apps both roles are the same keypair, so **default to the `signer*` vari
 
 ```ts
 import { createClient, lamports } from '@solana/kit';
-import {
-  rpcAirdrop,
-  solanaRpcConnection,
-  solanaRpcSubscriptionsConnection,
-} from '@solana/kit-plugin-rpc';
+import { rpcAirdrop, solanaRpcConnection } from '@solana/kit-plugin-rpc';
 import { generatedSignerWithSol } from '@solana/kit-plugin-signer';
 
-// Airdrop function must exist before generatedSignerWithSol
+// `solanaRpcConnection` installs both `rpc` and `rpcSubscriptions`; the WS URL
+// is derived from `rpcUrl` (override with `rpcSubscriptionsUrl` if needed).
+// Airdrop function must exist before generatedSignerWithSol.
 const client = await createClient()
-  .use(solanaRpcConnection('http://127.0.0.1:8899'))
-  .use(solanaRpcSubscriptionsConnection('ws://127.0.0.1:8900'))
+  .use(solanaRpcConnection({ rpcUrl: 'http://127.0.0.1:8899' }))
   .use(rpcAirdrop())
   .use(generatedSignerWithSol(lamports(10_000_000_000n)));
 ```
@@ -214,9 +272,12 @@ const client = await createClient()
 |---------|---------|---------|
 | `@solana/kit-plugin-rpc` | `solanaRpc`, `solanaMainnetRpc`, `solanaDevnetRpc`, `solanaLocalRpc`, `rpc`, `solanaRpcConnection`, `rpcAirdrop`, `rpcGetMinimumBalance`, `rpcTransactionPlanner`, `rpcTransactionPlanExecutor` | RPC connectivity + tx planning/execution |
 | `@solana/kit-plugin-signer` | `signer*` (default — sets both roles), `payer*`, `identity*` (role-specific); each comes in plain, `generated*`, `*WithSol`, `*FromFile`, and `airdrop*` forms | Signer management |
+| `@solana/kit-plugin-wallet` | `walletSigner`, `walletPayer`, `walletIdentity`, `walletWithoutSigner` | Browser wallet connection (Wallet Standard); adds `client.wallet` |
 | `@solana/kit-plugin-litesvm` | `litesvm`, `litesvmConnection`, `litesvmAirdrop`, `litesvmTransactionPlanner`, `litesvmTransactionPlanExecutor` | In-memory test environment |
-| `@solana/kit-plugin-airdrop` | `airdrop`, `rpcAirdrop` | SOL faucet (typically pulled in transitively) |
-| `@solana/kit-plugin-instruction-plan` | `planAndSendTransactions` | Instruction batching + sending sugar |
+| `@solana/kit-plugin-instruction-plan` | `planAndSendTransactions`, `transactionPlanner`, `transactionPlanExecutor` | Instruction batching + sending sugar (bundled into `solanaRpc`; install directly only for custom low-level composition) |
+| `@solana/surfpool/kit` | `surfpool`, `surfnetCheatcodes`, `createSurfnetCheatcodesRpc` | Embedded (or attached) Surfnet test environment; adds `client.cheatcodes`, `client.surfnet`, `client.rpcUrl`, `client.wsUrl` |
+
+**Deprecated — do not install:** `@solana/kit-plugins` (umbrella), `@solana/kit-plugin-airdrop` (use `rpcAirdrop` / `litesvmAirdrop`), `@solana/kit-plugin-payer` (use `@solana/kit-plugin-signer`), `@solana/kit-client-rpc` / `@solana/kit-client-litesvm` (use the all-in-one plugins above).
 
 ### Program Plugins
 
@@ -241,7 +302,11 @@ await client.token.instructions
 
 | Package | Plugin | Adds |
 |---------|--------|------|
-| `@solana-program/token` | `tokenProgram()` | `client.token.instructions` (createMint, mintToATA, transferToATA, etc.) |
+| `@solana-program/token` | `tokenProgram()` | `client.token` (createMint, mintToATA, transferToATA, batch, etc.) |
+| `@solana-program/token-2022` | `token2022Program()` | `client.token2022` (Token Extensions operations) |
+| `@solana-program/system` | `systemProgram()` | `client.system` (account creation, transfers, nonces) |
+| `@solana-program/compute-budget` | `computeBudgetProgram()` | `client.computeBudget` (CU limits, priority fees) |
+| `@solana-program/memo` | `memoProgram()` | `client.memo` |
 
 ### Example Implementations
 

@@ -7,6 +7,18 @@ description: Quick-start guide for @solana/kit using createClient + .use() plugi
 
 `@solana/kit` is the JavaScript SDK for building Solana applications. Modular, tree-shakable, full TypeScript support. Clients are built by composing plugins onto `createClient()` via `.use()`.
 
+## Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Client API](#client-api)
+- [Core Concepts](#core-concepts)
+- [Common Patterns](#common-patterns)
+- [Codama Program Clients](#codama-program-clients)
+- [Package Overview](#package-overview)
+- [Best Practices](#best-practices)
+- [Reference Files](#reference-files)
+
 ## Installation
 
 ```bash
@@ -14,9 +26,9 @@ npm install @solana/kit @solana/kit-plugin-rpc @solana/kit-plugin-signer
 # or: pnpm add @solana/kit @solana/kit-plugin-rpc @solana/kit-plugin-signer
 ```
 
-For LiteSVM testing add `@solana/kit-plugin-litesvm`. For Codama-generated program clients add the relevant `@solana-program/*` package(s).
+For LiteSVM testing add `@solana/kit-plugin-litesvm`. For browser wallet connection add `@solana/kit-plugin-wallet`. For Codama-generated program clients add the relevant `@solana-program/*` package(s).
 
-Minimum version: Solana Kit v6.8.0.
+Minimum version: Solana Kit v7 (plugin packages 0.13+). `@solana/kit-plugin-wallet` needs 0.14+ specifically — its React hooks take the client as an explicit argument only from that version on.
 
 ## Quick Start
 
@@ -104,6 +116,23 @@ const myAddress = address('So11111111111111111111111111111111111111112');
 const myLamports = lamports(1_000_000_000n);
 const mySig = signature('5eykt...');
 ```
+
+### SOL ↔ Lamports
+
+`Sol` is a fixed-point value (`{ raw, decimals: 9, ... }`), not a bigint — convert before passing it to an instruction:
+
+```ts
+import { lamports, lamportsToSol, sol, solToLamports, formatDecimalFixedPoint } from '@solana/kit';
+
+solToLamports(sol('1.5')); // lamports(1_500_000_000n)
+lamportsToSol(lamports(1_500_000_000n)); // Sol fixed-point representing 1.5
+
+// Display
+const formatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 5 });
+formatDecimalFixedPoint(formatter, lamportsToSol(balance)); // "1.5"
+```
+
+`sol()` parses in `'strict'` rounding mode by default and throws on more than 9 fractional digits; pass a `RoundingMode` (e.g. `sol('1.1234567891', 'round')`) to accept a rounded result. In TypeScript never hand-roll `/ 1e9` — floats lose precision on large balances.
 
 ### Signers
 
@@ -267,8 +296,8 @@ See [codama.md](codama.md) for naming conventions and patterns.
 | `@solana/kit` | Main SDK, re-exports all sub-packages, exports `createClient` |
 | `@solana/kit-plugin-rpc` | All-in-one RPC plugins: `solanaRpc`, `solanaMainnetRpc`, `solanaDevnetRpc`, `solanaLocalRpc` (plus low-level `rpc`, `rpcAirdrop`, `rpcTransactionPlanner`, `rpcTransactionPlanExecutor`) |
 | `@solana/kit-plugin-signer` | Signer plugins. Default `signer*` variants set both `payer` and `identity` (`signer`, `generatedSigner`, `signerFromFile`). Use `airdropSigner` to fund an already-installed signer; use `generatedSignerWithSol` only when an airdrop function is already installed. Role-specific `payer*` and `identity*` variants for when the two roles differ. |
+| `@solana/kit-plugin-wallet` | Browser wallet connection (Wallet Standard): `walletSigner`, `walletPayer`, `walletIdentity`, `walletWithoutSigner`; adds `client.wallet` (`getState()`, `connect()`); React hooks in `@solana/kit-plugin-wallet/react` |
 | `@solana/kit-plugin-litesvm` | All-in-one `litesvm` plugin (Node.js only) for in-memory testing |
-| `@solana/kit-plugin-airdrop` | Standalone airdrop plugin (most users get this via `solanaDevnetRpc`/`solanaLocalRpc`) |
 | `@solana/kit-plugin-instruction-plan` | `planAndSendTransactions` and instruction batching primitives |
 | `@solana/addresses` | Address validation |
 | `@solana/accounts` | Account fetching/decoding |
@@ -282,7 +311,10 @@ See [codama.md](codama.md) for naming conventions and patterns.
 | `@solana/instruction-plans` | Multi-instruction batching |
 | `@solana/errors` | Error identification/decoding |
 | `@solana/functional` | Pipe and compose utilities |
-| `@solana/react` | React wallet hooks |
+| `@solana/react` | Kit-native React bindings (`ClientProvider`, `useClient`, data/subscription hooks, SWR & TanStack Query adapters). Its legacy Wallet Standard hooks are being deprecated — use `@solana/kit-plugin-wallet/react` |
+| `@solana/compat` | Type conversions between Kit and legacy web3.js v1 values |
+
+**Deprecated packages — do not install:** `@solana/kit-plugins` (umbrella), `@solana/kit-plugin-airdrop` (use `rpcAirdrop`/`litesvmAirdrop`), `@solana/kit-plugin-payer` (use `@solana/kit-plugin-signer`), `@solana/kit-client-rpc` / `@solana/kit-client-litesvm` (use the `solanaRpc` / `litesvm` all-in-one plugins).
 
 ## Best Practices
 
