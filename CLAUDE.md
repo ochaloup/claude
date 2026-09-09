@@ -1,6 +1,21 @@
 # CLAUDE.md
 
-**SUPER IMPORTANT**: Write short, simple sentences. No compound-complex sentences. Be conscise, use plain english.
+**SUPER IMPORTANT**: Write short, simple sentences. No compound-complex sentences. Be concise, use plain english.
+
+**SUPER IMPORTANT**: Summary first, then depth. Layer every chat reply so I can stop at any boundary:
+
+1. One bold sentence that answers the question or names the outcome.
+2. Bullets with the facts behind it — file:line, values, the decision.
+3. Deeper detail last, and only when it changes what I do next.
+
+Each layer stands alone if I stop there. Each layer only adds — never restate an earlier one. Drop a layer that carries nothing. Example:
+
+**The retry loop never fires — the guard returns early.**
+- `shouldRetry()` at client.ts:88 checks `attempts > max`, but `attempts` resets on each call.
+- So every request gets one attempt.
+- Fix: move the counter to the caller.
+
+Why it was hard to see: the reset lives in a different function than the check.
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
@@ -20,6 +35,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
   - Never multi-line: no ///, no /** */, no stacked //. A comment block >1 line is a bug — fix it.
   - Never put a source line number in a comment (e.g. // see line 200, // as in L42). Diff-gutter numbers like `255 +` are NOT part of the code and must never end up in a comment. Pointing to a file and/or function name is fine.
   - Never put tickets numbers, code number lines into comments
+- Markdown docs (README.md, ARCHITECTURE.md, any *.md): the Comments rules above apply to prose too. Say the WHY and the WHAT in the fewest sentences that carry them. Never narrate the investigation, never restate what the code, a table, or a log message on the page already says. Two or three sentences beat a paragraph; a worked example earns its place only if a reader must act on it. Edit the existing sentence instead of appending a new paragraph beside it, and delete what your change made redundant.
 - If a Docker-dependent step (testcontainers, `docker` CLI, etc.) fails with `SocketNotFoundError("/var/run/docker.sock")` or "Cannot connect to the Docker daemon", this machine likely runs Podman, not Docker. Suggest the user export `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock` and retry — do not chase it as a code bug.
 
 ### 0.21. Shell discipline
@@ -136,6 +152,18 @@ When the architecture changes then the function call still has to be working wel
 - "close the comments" means resolve every thread you posted on — fixed and declined alike.
 - After posting, report one line per thread: id, decision, link. Nothing else. No re-summary of the fix.
 - Loose ends go in a short list after that report. They never delay the posting.
+
+### 11. "3 step" summaries
+
+`3 step` plus a link means: read the full source — not the abstract, not the preview — then write one continuous summary in three layers of growing length.
+
+- **Layer 1** — one paragraph. The whole piece at maximum compression.
+- **Layer 2** — two paragraphs. Mechanism, key evidence, how the result was produced.
+- **Layer 3** — three paragraphs. Methodology specifics, numbers, context, limitations, implications.
+
+Label each layer with a short bold line of its own ("Layer 1"). No other headers or formatting inside them. Every layer continues from the previous one and never restates it, so 1, 1+2 and 1+2+3 each read as a complete summary at their own depth. Compression is the point; analysis serves it.
+
+Write plain, direct sentences for a smart reader outside the field. Use the standard technical term whenever it is shorter or more precise than a paraphrase — never trade precision or brevity for simplicity. Gloss a term only if that reader would not know it, in a few words, once.
 
 
 ---
