@@ -1,0 +1,26 @@
+schema_version: "1"
+name: prior-findings
+description: Round detection and prior-finding carry-forward must lose no finding when the scan is delegated.
+tags: [pr-review, locator]
+
+context:
+  scaffold_script: scaffold.sh
+
+execution:
+  max_turns: 25
+  timeout_seconds: 900
+  allowed_tools: [Read, Grep, Glob, Bash, Agent, Skill]
+  runs: 3
+  prompt: |
+    ./plans holds this project's saved review documents. Carry out the pr-review
+    skill's step 8 — round detection and prior unaddressed findings — for branch
+    `widget-refactor`, PR 99, using ./plans in place of $SAVE_PLAN_PATH.
+
+    The files are large. Do not read them into this conversation; delegate as
+    step 8 says.
+
+    Output the round on its own first line, then one line per prior finding from
+    the file step 8 tells you to use, and nothing else — no preamble, no summary:
+
+        ROUND=<n>
+        <finding id> | <file:line> | <fix plan, verbatim and complete>

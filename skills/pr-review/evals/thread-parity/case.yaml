@@ -1,0 +1,32 @@
+schema_version: "1"
+name: thread-parity
+description: Delegating the pr-review feedback fetch must lose no unresolved item.
+tags: [pr-review, locator]
+
+context:
+  scaffold_script: scaffold.sh
+
+execution:
+  max_turns: 25
+  timeout_seconds: 900
+  allowed_tools: [Read, Grep, Glob, Bash, Agent, Skill]
+  runs: 3
+  prompt: |
+    ./feedback.json is the raw response of the pr-review skill's step 6 GraphQL
+    query for PR 412. It is large, so do not read it into this conversation —
+    delegate the extraction to the `locator` agent.
+
+    Apply step 6's channel rules to what comes back and produce the surviving
+    items only.
+
+    Output one line per surviving item and nothing else — no preamble, no
+    summary, no counts:
+
+        <id> | <author> | <path>:<line> | OUTDATED or CURRENT | <first sentence of the body>
+
+    For an inline thread <id> is the thread id, not the id of a comment inside
+    it — the thread id is what a reply later has to be posted against. For a
+    review or a PR-level comment it is that record's own id.
+
+    Use `n/a` for path and line where the channel has none. Do not print the id
+    of any item you dropped.

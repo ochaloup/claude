@@ -391,13 +391,26 @@ can pick up where the last one left off.
 1. Resolve `$SAVE_PLAN_PATH` (`python3 -c 'import os; print(os.environ.get("SAVE_PLAN_PATH",""))'`).
 2. Scan for prior saved reviews matching this branch/PR — typically
    `*--<branch>--*REVIEW*.md` or `*--<branch>--pr-<N>--REVIEW*.md`.
+
+**Delegate the scan and the extraction to the `locator` agent** — saved REVIEW
+files reach 200KB+ and only the finding index is needed here. Give it this task:
+
+> List the files in <resolved path> matching <glob>, newest by mtime first. From
+> the newest one only, return verbatim, for every `#### P<pri>-R<round>#<seq>`
+> heading: the heading line, the section heading above it, the `file:line`
+> reference, and the `Fix plan:` line. Never truncate a fix plan. Omit every other
+> line. Also list the distinct `R<n>` values you saw. Lead with the ledger line.
+
+Check the ledger before going on: headings found must equal headings returned.
+Take `ROUND` from the highest `R<n>` it reports, plus one. Read the file inline
+instead if the agent is unavailable or the ledger fails.
 3. **Round detection:**
    - No matching file → `ROUND = 1`.
    - Matching file → parse findings for the highest `R<n>` ID and set `ROUND = highest + 1`.
-4. **Prior re-verification:** read only the most recent matching file — it already
+4. **Prior re-verification:** use only the most recent matching file — it already
    carries forward everything still unaddressed from earlier rounds, so older files
-   add context without adding findings. For each finding in it, re-check against
-   current code. Classify:
+   add context without adding findings. For each finding the agent returned from it,
+   re-check against current code. Classify:
    - **ADDRESSED** — gone. Record ID in tally only.
    - **STILL_PRESENT** — carry forward, keep original ID.
    - **UNCERTAIN** — carry forward, keep original ID.
