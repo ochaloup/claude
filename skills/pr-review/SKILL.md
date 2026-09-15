@@ -101,6 +101,22 @@ threads ARE NOT the only place reviewers leave actionable feedback. The most
 important comments (top-level review summaries with `CHANGES_REQUESTED` or
 `COMMENTED` state) live in `reviews.body`, not in `reviewThreads`.
 
+**Delegate the fetch to the `locator` agent** so the raw GraphQL dump never enters
+this context. Pass it the query below with OWNER/REPO/PR_NUMBER substituted, and
+this task:
+
+> Run the command. Drop `reviewThreads.nodes` entries where `isResolved` is true —
+> that field only, nothing else. Return every remaining record verbatim: channel,
+> id, author login, path, line, isOutdated, url, and the full body text unchanged.
+> Never truncate a body — the ask is often in its last sentence.
+> Lead with the ledger line.
+
+Check its ledger arithmetic before going on: threads seen minus resolved must equal
+threads returned. If it does not, run the query yourself and do not use the agent's
+output.
+
+Fall back to running it inline when the agent is unavailable or the ledger fails.
+
 ```bash
 gh api graphql -f query='
 query($owner: String!, $repo: String!, $pr: Int!) {
@@ -153,8 +169,9 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 
 Treat each channel as follows:
 
-- `reviewThreads.nodes` — inline file comments. Discard where `isResolved` is true.
-  Threads where `isOutdated` is true are unresolved but note them as OUTDATED.
+- `reviewThreads.nodes` — inline file comments. The `locator` agent has already
+  dropped `isResolved` ones; discard any that slipped through. Threads where
+  `isOutdated` is true are unresolved but note them as OUTDATED.
 - `reviews.nodes` — top-level review submissions. Keep entries where `body` is
   non-empty. These do NOT have a resolved/unresolved state in the API; treat them
   as actionable unless their content is purely informational (e.g. "LGTM",
@@ -201,14 +218,27 @@ the path via `python3 -c 'import os; print(os.environ.get("SAVE_PLAN_PATH",""))'
 Scan for files matching this PR/branch, e.g. `*--<HEAD_BRANCH>--pr-<PR_NUMBER>--REVIEW*.md`
 or `*--<HEAD_BRANCH>--*REVIEW*.md` if the context arg differs.
 
+**Delegate the scan and the extraction to the `locator` agent** — saved REVIEW
+files reach 200KB+ and only the finding index is needed here. Give it this task:
+
+> List the files in <resolved path> matching <glob>, newest by mtime first. From
+> the newest one only, return verbatim, for every `#### P<pri>-R<round>#<seq>`
+> heading: the heading line, the section heading above it, the `file:line`
+> reference, and the `Fix plan:` line. Never truncate a fix plan. Omit every other
+> line. Also list the distinct `R<n>` values you saw. Lead with the ledger line.
+
+Check the ledger before going on: headings found must equal headings returned.
+Take `ROUND` from the highest `R<n>` it reports, plus one. Read the file inline
+instead if the agent is unavailable or the ledger fails.
+
 - If no matching file: this is **round 1** → `ROUND = 1`.
 - If a matching file exists: parse its findings for the highest `R<n>` in the
   IDs (format `P<pri>-R<n>#<seq>`). Set `ROUND = highest + 1`.
 
 ### 8b. Load prior findings and re-verify
 
-For each finding in the most recent matching prior file:
-1. Read its file/line + Fix plan from the saved MD.
+For each finding the `locator` returned from the most recent matching prior file:
+1. Take its file/line + Fix plan from what the agent returned.
 2. Re-check against current code at HEAD of the PR branch.
 3. Classify as:
    - **ADDRESSED** — concern is gone. Drop from the new run's outputs (but record the ID as addressed for the summary tally).

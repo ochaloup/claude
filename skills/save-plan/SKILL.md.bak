@@ -38,21 +38,23 @@ Never use `$SAVE_PLAN_PATH` (or any shell variable) directly in bash — quoted 
 
 Workflow:
 
-1. Gather every environment fact in **one** bash call. Every extra call re-reads the whole session context, which is where a save's cost goes:
+1. Resolve `$SAVE_PLAN_PATH` to a literal string **once** via:
    ```
-   python3 -c 'import os,subprocess,json,datetime,glob; g=lambda c:subprocess.run(c,capture_output=True,text=True).stdout.strip(); print(json.dumps({"save_plan_path":os.environ.get("SAVE_PLAN_PATH",""),"cwd":os.getcwd(),"in_git":g(["git","rev-parse","--is-inside-work-tree"]),"branch":g(["git","branch","--show-current"]),"generated":datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z"),"drafts":sorted(glob.glob("*.md"))}))'
+   python3 -c 'import os; print(os.environ.get("SAVE_PLAN_PATH",""))'
    ```
-   Permitted by the existing `Bash(python3 -c *)` allow rule and free of shell expansion. It answers **Filename**, **Mode detection**, the `Generated:` line and the draft scan at once — never re-run `pwd`, `git` or `date` separately.
+   Permitted by the existing `Bash(python3 -c *)` allow rule and free of shell expansion.
 
-2. Use the returned literal strings in every subsequent operation. Concatenate the filename in your head (or in your reasoning), not in the shell.
+2. Use the resulting literal path string in every subsequent operation. Concatenate the filename in your head (or in your reasoning), not in the shell.
 
 3. Prefer dedicated tools for file I/O — they take literal paths and never trigger expansion prompts:
-   - **Read the destination and any draft files**: `Read`, all in one message — a missing destination just means a fresh save
+   - **List directory contents / find existing saved files**: `Glob` or `LS`
+   - **Read source/draft files**: `Read`
    - **Write destination file**: `Write`
-
-   Do not verify the result afterwards; `Write` fails loudly when it cannot write.
+   - **Verify written file**: `LS` or `Read`
 
 4. If bash is unavoidable, use the literal resolved path inline (e.g. `ls /home/user/plans/...`) — never `ls "$SAVE_PLAN_PATH"/...`.
+
+Same rule applies to `pwd`: run it as its own bash call, capture the literal output, then use that literal in further operations rather than `$(pwd)` substitution.
 
 ## Filename
 
@@ -67,8 +69,8 @@ E. <SLUG>--<TYPE>.md                                # multi-repo work (DIR dropp
 F. <SLUG>--<CONTEXT>--<TYPE>.md                     # multi-repo, with CONTEXT
 ```
 
-- **DIR**: basename of the probe's `cwd`. As-is casing. **Omit** when in multi-repo mode (E/F).
-- **BRANCH** (forms A/B only): the probe's `branch`. As-is casing, `/` → `-`. If it is empty or equals `main` / `master`, do not use forms A/B — switch to the SLUG forms (C/D/E/F).
+- **DIR**: basename of the current working directory — run `pwd` as its own bash call, then take the basename of the result (do not invoke `basename $(pwd)` as one command — command substitution will trip the allow-list). As-is casing. **Omit** when in multi-repo mode (E/F).
+- **BRANCH** (forms A/B only): run `git branch --show-current` as its own bash call. As-is casing, `/` → `-`. If the result is empty or equals `main` / `master`, do not use forms A/B — switch to the SLUG forms (C/D/E/F).
 - **SLUG** (forms C/D/E/F): derive a **3-4 word kebab-case** identifier of what this document is about, directly from the conversation/content being saved. Lowercase, alphanumerics + `-` only. Do not ask the user. Examples: `jwt-refresh-flow`, `db-migration-rollback`, `oncall-paging-fix`.
   - For multi-repo (E/F), elaborate the slug so it conveys the multi-repo nature — include short repo identifiers or a `multi` hint, e.g. `auth-backend-frontend`, `multi-repo-deploy-rollout`.
 - **CONTEXT**: from positional arg if provided. Lowercase, spaces/slashes replaced with `-`.
@@ -79,9 +81,11 @@ F. <SLUG>--<CONTEXT>--<TYPE>.md                     # multi-repo, with CONTEXT
 Resolve in this order:
 
 1. Is the work spanning **multiple repositories**? Judge from the conversation context — references to >1 distinct repo / project root, plans that touch separate codebases, or cross-repo analyses. If yes → **multi-repo mode** (E/F).
-2. Read `in_git` and `branch` from the probe.
-   - `in_git` is `true` AND `branch` is non-empty AND not `main` AND not `master` → **feature-branch mode** (A/B).
-   - Anything else (no git, detached HEAD, `main`, `master`) → **slug mode** (C/D).
+2. Run `git rev-parse --is-inside-work-tree` as its own bash call.
+   - Exit code 0 → inside a git repo. Run `git branch --show-current` (its own bash call):
+     - Non-empty AND not `main` AND not `master` → **feature-branch mode** (A/B).
+     - Empty (detached HEAD) OR `main` OR `master` → **slug mode** (C/D).
+   - Non-zero exit (no git, or `fatal:` on stderr) → **slug mode** (C/D).
 
 **Examples:**
 ```
@@ -97,8 +101,9 @@ multi-repo-deploy-rollout--q2-launch--PLAN.md            # F (multi-repo + CONTE
 ## Document Structure
 
 Every document **must** start with a `Generated:` timestamp line directly under
-the title, followed by a **Sources** section before any content. Use the probe's
-`generated` value, refreshed on every save. If the incoming content already carries its own timestamp
+the title, followed by a **Sources** section before any content. Resolve the
+timestamp by running `date '+%Y-%m-%d %H:%M %Z'` as its own bash call; refresh
+it on every save. If the incoming content already carries its own timestamp
 line (e.g. `Reviewed: ...` from a review skill), keep that line in the body —
 the `Generated:` line reflects when the file was last written.
 
@@ -134,7 +139,7 @@ Multiple types only when content genuinely spans them. Combine names (`PLAN_REVI
 
 ## Draft files in the current directory
 
-The probe's `drafts` already lists every `*.md` in the current working directory. Select the entries whose names end in the resolved TYPE — e.g. `PLAN.md`, `REVIEW.md`, `*-PLAN.md`, `*-REVIEW.md`, or any `*<TYPE>.md` pattern. Do not re-scan the directory.
+Before writing to `$SAVE_PLAN_PATH`, scan the current working directory for draft files whose names end in the resolved TYPE — e.g. `./PLAN.md`, `./REVIEW.md`, `./*-PLAN.md`, `./*-REVIEW.md`, or any `./*<TYPE>.md` pattern.
 
 For each match:
 1. Read its content and fold it into the document you are about to save (Sources, body, chapters), applying the rules in **Merge Strategy** below.

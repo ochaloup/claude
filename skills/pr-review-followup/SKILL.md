@@ -82,8 +82,8 @@ Run each command separately (no pipes, no `;`, no redirects — one command per 
    ```bash
    git merge-base --is-ancestor <LAST_REVIEW_COMMIT> HEAD
    ```
-   - exit code 0 → set REVIEW_BASE = LAST_REVIEW_COMMIT, skip step 2.
-   - exit code 1 (force-push or rebase happened) → continue to step 2.
+   - exit code 0 → set REVIEW_BASE = LAST_REVIEW_COMMIT, skip item 2 below.
+   - exit code 1 (force-push or rebase happened) → continue to item 2 below.
 
 2. Resolve the merge-base:
    ```bash
@@ -189,6 +189,41 @@ current HEAD of the PR branch and classify:
 
 Do not renumber prior IDs.
 
+### 4c. Trace each new finding to its origin
+
+A follow-up round reviews code that was largely written to satisfy the previous
+round. So a new finding is often not a fresh regression — it is a gap in a fix the
+last review asked for. That changes who owns it and how it reads on the PR, and it
+is invisible unless you correlate the two sets deliberately.
+
+For every finding this run produced (Sections A, B, C), decide where the code it
+anchors to came from:
+
+- **`fix for <prior ID>`** — the code was written to address a prior finding. Find
+  it by locating the finding's hunk in `git diff <REVIEW_BASE>..HEAD` and matching
+  it against that prior finding's Fix plan. Highest-signal outcome: the review
+  caused this one.
+- **`new`** — code added in `REVIEW_BASE..HEAD` that no prior finding asked for.
+- **`pre-existing`** — the code predates `REVIEW_BASE`. Confirm with
+  `git log --oneline <REVIEW_BASE>..HEAD -- <path>` returning nothing. The finding
+  is new to the *review*, not to the code — the earlier round missed it. Say that,
+  so it does not read as a regression.
+
+A finding caused by another finding of this same round records that chain, e.g.
+`fix for P2-R2#8`.
+
+For each `fix for <prior ID>`, name which pattern it follows — they need different
+responses:
+
+- **Cheaper substitute** — the fix closed the finding by removing the thing (a test
+  deleted, a feature dropped) instead of doing what was asked. State what was lost.
+- **Incomplete attempt** — the fix is right in shape and misses an edge.
+
+When the prior round's own suggested fix would not have avoided the new defect
+either, say so in that finding's Assessment. The review owns that, not the author.
+
+Tally for the header: how many new findings trace back to prior-round fixes.
+
 ## 5. Verify against description in notion task
 
 If you have access to notion (Marinade the most probably) and the PR title
@@ -234,6 +269,7 @@ Your last review: <LAST_REVIEW_STATE> at <LAST_REVIEW_DATE> (commit <short LAST_
 New commits since review: <NEW_COMMIT_COUNT>
 Round: R<ROUND>
 Prior findings re-checked: <N total — A addressed, S still present, U uncertain>   (omit when no prior file)
+Fix lineage: <N> of <M> new findings caused by prior-round fixes, <N> new code, <N> pre-existing   (omit when no prior file)
 ```
 
 ### Section A: Conversation Status (from pr-review + enrichment)
@@ -259,6 +295,7 @@ Permalink / Source: <full clickable URL — no markdown shortening>
 Original comment: <verbatim quote of the single sub-ask, plus 1-2 sentences of context>
 Latest reply: <summary of last comment, if any>           (INLINE-THREAD only)
 Current code / state: <relevant lines, or repo state checked>
+Origin: <fix for <prior ID> — cheaper substitute|incomplete attempt | new | pre-existing>   (from step 4c)
 Assessment: <why classified this way>
 Fix plan: <concrete change, or "None — resolve thread" / "Decline">
 ```
@@ -272,6 +309,7 @@ Use the code-review output. IDs continue the same round (e.g. `P1-R2#5`).
 Category: <objective name>
 File: <path>, lines <start>-<end>
 Permalink: <full clickable URL>
+Origin: <fix for <prior ID> — cheaper substitute|incomplete attempt | new | pre-existing>   (from step 4c)
 Issue: <description>
 Suggested fix: <concrete fix>
 ```
@@ -298,26 +336,29 @@ Fix plan: <unchanged or updated fix plan>
 
 - How many of your review comments were addressed vs still pending
 - Top concerns from new changes
+- How many new findings the previous round's fixes caused, and whether the pattern
+  is cheaper substitutes or incomplete attempts — a round that is mostly the former
+  needs a conversation about fix quality, not another list of defects
 - Whether the PR looks closer to mergeable or needs another round
 
 The MD must contain **all detail useful for fixing** — file paths, line
 numbers, permalinks, code snippets, and concrete fixes. The console table in
-step 8 is only a summary.
+step 9 is only a summary.
 
-## 7. Persist the full report via the `save-plan` skill
+## 8. Persist the full report via the `save-plan` skill
 
 Invoke the `save-plan` skill with context `pr-<PR_NUMBER>-followup` and the
-step-6 content as input. `save-plan` resolves the canonical filename (TYPE will
+step-7 content as input. `save-plan` resolves the canonical filename (TYPE will
 be `REVIEW`) and writes the file under `$SAVE_PLAN_PATH`. Do not write any file
 directly. Every finding must include the full clickable GitHub permalink.
 
-**This must complete before step 8.**
+**This must complete before step 9.**
 
-## 8. Final summary table (last step)
+## 9. Final summary table (last output)
 
 After `save-plan` reports the saved file path, print a single table to the
 chat as the **last** output. No prose after it except the
-question in step 9.
+question in step 10.
 
 Include, in this order:
 1. Every carried-forward prior finding still unaddressed (Section D), in
@@ -326,19 +367,40 @@ Include, in this order:
 
 Table columns:
 
-| ID | Description | Status / Recommendation |
-|----|-------------|--------------------------|
+| ID | Description | Origin | Status / Recommendation |
+|----|-------------|--------|--------------------------|
 
 - **ID** — e.g. `P1-R2#1`.
 - **Description** — one-line summary (≤ 150 chars).
+- **Origin** — from step 4c: `fix for <prior ID>`, `new`, or `pre-existing`. Keep
+  it to that; the pattern (cheaper substitute / incomplete attempt) lives in the MD.
+  Leave blank for Section D rows — a carried-forward finding has no origin, it *is*
+  the origin.
 - **Status / Recommendation** —
   - Section A items: `PRESENT`, `ADDRESSED_IN_DISCUSSION`, `OUTDATED`, `UNCERTAIN`, or `STILL_PRESENT (Rn)`.
   - Section B/C items: short recommendation (≤ 80 chars).
   - Section D items: `STILL_PRESENT (Rn)` or `UNCERTAIN (Rn)`.
 
-Above the table print the absolute saved-file path from step 7 on its own line.
+### Fix-lineage block
 
-## 9. Ask for next action
+The Origin column answers "where did this one come from" per row. It cannot show a
+single fix that spawned two defects, or a chain. Print this block directly above the
+table, grouped by the **prior** finding, so both are visible at a glance:
+
+```
+Caused by prior-round fixes (<N> of <M> new findings):
+  <prior ID>  <what was done>        -> <new ID>, <new ID>
+  <prior ID>  <what was done>        -> <new ID> -> <new ID>
+```
+
+`<what was done>` is three or four words naming the change, not the defect — "anchor
+added", "lookahead removed", "test deleted". An arrow chain shows a second-order
+cause. Omit the whole block when nothing traces back; a clean round should print
+nothing rather than an empty heading.
+
+Above that, print the absolute saved-file path from step 8 on its own line.
+
+## 10. Ask for next action
 
 STOP. Do not apply any changes. Ask the user which IDs to act on and which to
 decline.

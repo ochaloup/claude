@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "claudeVersion": "2.1.270",
+  "startedAt": "2026-09-14T09:52:53.981Z",
+  "durationSeconds": 171,
+  "costUsd": 0.5600759999999999,
+  "partial": false,
+  "suite": {
+    "root": "/home/chalda/Dropbox/scripts/configs/claude/skills/pr-review",
+    "ablation": "none",
+    "threshold": 1,
+    "concurrency": 1,
+    "plugins": [
+      {
+        "name": "pr-review",
+        "path": "/home/chalda/Dropbox/scripts/configs/claude/skills/pr-review"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "thread-parity",
+      "dir": "evals/thread-parity",
+      "source": "mixed",
+      "promptMarkdown": "./feedback.json is the raw response of the pr-review skill's step 6 GraphQL\nquery for PR 412. It is large, so do not read it into this conversation —\ndelegate the extraction to the `locator` agent.\n\nApply step 6's channel rules to what comes back and produce the surviving\nitems only.\n\nOutput one line per surviving item and nothing else — no preamble, no\nsummary, no counts:\n\n    <id> | <author> | <path>:<line> | OUTDATED or CURRENT | <first sentence of the body>\n\nFor an inline thread <id> is the thread id, not the id of a comment inside\nit — the thread id is what a reply later has to be posted against. For a\nreview or a PR-level comment it is that record's own id.\n\nUse `n/a` for path and line where the channel has none. Do not print the id\nof any item you dropped.\n",
+      "runsPerCase": 3,
+      "timeoutSeconds": 900,
+      "maxTurns": 25,
+      "graders": [
+        {
+          "name": "charlie-marked-outdated",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "RT_unres_charlie.*?OUTDATED",
+            "flags": "s",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "delegated",
+          "type": "tool_used",
+          "weight": 1,
+          "config": {
+            "tool": "Agent",
+            "input_match": "locator",
+            "min": 1,
+            "arm": "with-only"
+          }
+        },
+        {
+          "name": "drops-resolved",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "RT_res_[1-5]",
+            "flags": "",
+            "match": "not_contains"
+          }
+        },
+        {
+          "name": "keeps-alpha",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "RT_unres_alpha",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "keeps-bravo",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "RT_unres_bravo",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "keeps-charlie",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "RT_unres_charlie",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "keeps-issue-question",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "IC_ask",
+            "flags": "",
+            "match": "contains"
+          }
+        },
+        {
+          "name": "keeps-review-body",
+          "type": "regex",
+          "weight": 1,
+          "config": {
+            "target": "last_message",
+            "pattern": "RV_changes",
+            "flags": "",
+            "match": "contains"
+          }
+        }
+      ],
+      "arms": {
+        "with": [
+          {
+            "score": 1,
+            "passed": true,
+            "turns": 9,
+            "costUsd": 0.5600759999999999,
+            "judgeCostUsd": 0,
+            "durationSeconds": 171,
+            "startedAt": "2026-09-14T09:52:53.992Z",
+            "error": null,
+            "tracePath": "/tmp/claude-eval-Xkfhq6/out/trace.jsonl",
+            "skippedPaidGraders": false,
+            "graders": [
+              {
+                "name": "charlie-marked-outdated",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched RT_unres_charlie.*?OUTDATED",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "delegated",
+                "passed": true,
+                "weight": 1,
+                "explanation": "Agent called 1x (expected 1..∞)",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "drops-resolved",
+                "passed": true,
+                "weight": 1,
+                "explanation": "pattern absent as expected",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-alpha",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched RT_unres_alpha",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-bravo",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched RT_unres_bravo",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-charlie",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched RT_unres_charlie",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-issue-question",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched IC_ask",
+                "withOnly": false,
+                "scored": true
+              },
+              {
+                "name": "keeps-review-body",
+                "passed": true,
+                "weight": 1,
+                "explanation": "matched RV_changes",
+                "withOnly": false,
+                "scored": true
+              }
+            ]
+          }
+        ]
+      },
+      "aggregates": {
+        "score": 1,
+        "passRate": 1
+      }
+    }
+  ],
+  "aggregates": {
+    "casesTotal": 1,
+    "casesPassed": 1,
+    "overallScore": 1,
+    "overallPassRate": 1
+  }
+}
