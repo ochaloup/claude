@@ -47,7 +47,8 @@ Workflow:
 2. Use the returned literal strings in every subsequent operation. Concatenate the filename in your head (or in your reasoning), not in the shell.
 
 3. Prefer dedicated tools for file I/O — they take literal paths and never trigger expansion prompts:
-   - **Read the destination and any draft files**: `Read`, all in one message — a missing destination just means a fresh save
+   - **Read the draft files** named by the probe's `drafts`: `Read`, all in one message
+   - **Read the destination only when merging chapters** into an existing multi-type file. A single-type save replaces it wholesale, and saved documents reach 700KB — reading one needlessly loads context that every later turn pays for.
    - **Write destination file**: `Write`
 
    Do not verify the result afterwards; `Write` fails loudly when it cannot write.

@@ -241,10 +241,13 @@ character; one block per comment; never on a FILE-level thread.
 
 **No comment text ever passes through the shell.** It carries apostrophes,
 backticks, em-dashes and newlines; a `-f body='…'` argument mangles all of them,
-and so does a `python3 -c '…'` one-liner with the text inlined. Always write the
-text with the **Write tool** first — the review body to `<scratch>/body-0.md`
-(7a), every finding into one `<scratch>/threads.json` payload (7b) — so each
-command itself holds nothing but ASCII ids and paths.
+and so does a `python3 -c '…'` one-liner with the text inlined. Two steps every
+time:
+
+1. Write the comment text to `<scratch>/body-<n>.md` with the **Write tool** —
+   no escaping, no shell.
+2. Build the JSON with a one-liner that *reads* that file, so the command itself
+   holds nothing but ASCII ids and paths.
 
 ### 7a. Create the pending review — only if none exists
 
@@ -262,30 +265,25 @@ gh api graphql --input <scratch>/review-create.json
 submits and every comment goes public at once. Confirm `state` comes back
 `PENDING` before adding a single thread.
 
-### 7b. Add the threads — one request each, one call
+### 7b. Add one thread per finding
 
-Write every finding into a single payload with the **Write tool**, bodies inline:
-
-```json
-{"review_id": "PRR_kwXXX", "threads": [
-  {"path": "src/fees.ts", "line": 214, "body": "🤖 claude: …"},
-  {"path": "src/fees.ts", "line": 260, "start_line": 254, "body": "🤖 claude: …"},
-  {"path": "src/legacy.ts", "subject_type": "FILE", "body": "🤖 claude: …"}
-]}
-```
-
-`start_line` makes it a range. `"side": "LEFT"` anchors a removed line. A
-`subject_type` of `FILE` drops the line anchor for a whole-file thread.
+Line or range:
 
 ```bash
-python3 -c 'import os;exec(open(os.path.expanduser("~/.claude/scripts/gh_pending_threads.py")).read())' <scratch>/threads.json
+python3 -c 'import json;b=open("<scratch>/body-1.md").read();open("<scratch>/thread-1.json","w").write(json.dumps({"query":"mutation($rev:ID!,$path:String!,$line:Int!,$body:String!){addPullRequestReviewThread(input:{pullRequestReviewId:$rev,path:$path,line:$line,side:RIGHT,body:$body}){thread{id}}}","variables":{"rev":"PRR_kwXXX","path":"src/fees.ts","line":214,"body":b}}))'
 ```
 
-Each finding is still its own mutation, so a rejected anchor — the failure you
-will actually hit — stays isolated: the driver prints
-`n path:line <thread id | FAILED …>` per finding, continues past a failure, and
-exits non-zero if any failed. Never merge the findings into one mutation
-document; that is what hides which one GitHub rejected.
+```bash
+gh api graphql --input <scratch>/thread-1.json
+```
+
+Add `startLine:$start,startSide:RIGHT` to the input for a range. Use
+`side:LEFT`/`startSide:LEFT` for removed lines. For a whole file, drop
+`line`/`side` and pass `subjectType:FILE`.
+
+One mutation per finding, one file per finding. Batching them into a single
+document hides which one GitHub rejected, and a rejected anchor is the failure
+you will actually hit.
 
 **Skip duplicates.** Before adding, compare against the pending review's existing
 comments from step 4 — same path, same line, same point. Re-running the skill
