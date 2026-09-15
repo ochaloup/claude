@@ -250,12 +250,14 @@ Carried-forward prior findings keep their original IDs.
 
 Combine everything into a single document. Plain text, no emoji, no icons.
 
-Before rendering the header, resolve both header values in one bash call:
+Before rendering the header, run as its own bash call:
 ```bash
-python3 -c 'import subprocess,datetime;print(subprocess.run(["git","rev-list","<REVIEW_BASE>..HEAD","--count"],capture_output=True,text=True).stdout.strip());print(datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z"))'
+git rev-list <REVIEW_BASE>..HEAD --count
 ```
-First stdout line is NEW_COMMIT_COUNT, second is the `Reviewed:` timestamp, which
-must be the header's first line.
+Use the stdout as NEW_COMMIT_COUNT.
+
+Resolve the current date and time by running `date '+%Y-%m-%d %H:%M %Z'` as
+its own bash call. It must be the first header line.
 
 ### Header
 ```

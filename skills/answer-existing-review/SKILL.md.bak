@@ -165,31 +165,23 @@ Shape per disposition:
 
 ## 6. Post, then resolve
 
-**Reply text never passes through the shell.** It carries apostrophes, backticks
-and em-dashes; a `-f body='…'` argument mangles them and you will be patching a
-live comment afterwards. Write the whole batch as one JSON file with the **Write
-tool** — no escaping, no shell — then post and resolve in a single call.
-
-One entry per thread you are answering. `resolve` is `true` for automation
-threads only:
-
-```json
-{"repo": "OWNER/REPO", "pr": 123, "threads": [
-  {"thread_id": "PRRT_…", "comment_id": 3815629212, "body": "🤖 claude: …", "resolve": true}
-]}
-```
-
-`comment_id` is the thread's `comments.nodes[0].databaseId` from step 3 — the
-numeric id, not the `PRRC_…` node id.
+**Quote the body through a file, not the shell.** Reply text contains
+apostrophes, backticks and em-dashes; a `-f body='…'` argument mangles them and
+you will be patching a live comment afterwards. Write JSON with python, then:
 
 ```bash
-python3 -c 'import os;exec(open(os.path.expanduser("~/.claude/scripts/gh_reply_threads.py")).read())' <scratch>/replies.json
+python3 -c 'import json;open("/tmp/reply.json","w").write(json.dumps({"body":"🤖 claude: …"}))'
 ```
 
-Every thread is still its own HTTP request. The driver prints one
-`thread_id reply= resolve=` line per thread and exits non-zero if any failed, so
-a rejection names the thread that caused it. Do not re-query the threads
-afterwards — the resolve mutation returns `isResolved` and the driver checks it.
+```bash
+gh api repos/OWNER_REPO/pulls/PR_NUMBER/comments/<databaseId>/replies --input /tmp/reply.json
+```
+
+Then, **for automation threads only**, resolve in the same turn:
+
+```bash
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "PRRT_…"}) { thread { id isResolved } } }'
+```
 
 Resolve every automation thread you replied to, whatever the disposition —
 fixed, deferred and declined alike. Resolving is idempotent, so a thread the bot
@@ -215,6 +207,12 @@ mentioned it" stand as the record on its own.
 **Never resolve a human's thread** unless the user asks for that thread by name.
 The reviewer closes their own conversation once they are satisfied with the
 reply.
+
+Then verify:
+
+```bash
+gh api graphql -f query='query { repository(owner: "OWNER", name: "REPO") { pullRequest(number: PR_NUMBER) { reviewThreads(first: 100) { nodes { id isResolved } } } } }'
+```
 
 ## 7. Never post at PR level
 
