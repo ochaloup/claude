@@ -1,6 +1,6 @@
 ---
 name: pr-description
-description: Compose a brief, human-readable PR description for the active branch from the conversation context, the saved work documents under $K, and the actual branch diff. One lead sentence plus one bullet per change, each stating intention over implementation. Prints raw markdown for copy&paste into the GitHub PR; writes it to the PR only when invoked with `apply`.
+description: Compose a brief, human-readable PR description for the active branch from the conversation context, the saved work documents under $K, and the actual branch diff. Opens with the why — the problem and the goal of the change — then one bullet per change, each stating intention over implementation. Prints raw markdown for copy&paste into the GitHub PR; writes it to the PR only when invoked with `apply`.
 when_to_use: a branch is finished (code reviewed, review comments addressed) and its PR body needs to be written or refreshed
 argument-hint: "[<pr-url>|<pr-number>|<branch>] [apply]"
 ---
@@ -11,7 +11,7 @@ Arguments: $ARGUMENTS
 
 Produce the PR body the author pastes into GitHub. The audience is a reviewer or
 a future colleague reading the merged PR in the history — they want to know
-**what changed and why**, in under a minute.
+**why it was done and what changed**, in under a minute.
 
 ## 1. Parse arguments
 
@@ -82,7 +82,7 @@ order of usefulness:
 
 Read what matches. Use each type for what it is good for:
 
-- `PLAN` / `DESIGN` — the goal and the approach. Best source for the lead sentence.
+- `PLAN` / `DESIGN` — the goal and the approach. Best source for the opening *why*.
 - `INVESTIGATION` — the root cause. Best source for the *why* behind a fix.
 - `IMPLEMENTATION_DETAIL` — decisions and edge cases; mine for reasons, not for prose to reuse.
 - `REVIEW` (including `*--pr-<N>--REVIEW.md`) — why a given fix exists. **Not** a
@@ -129,15 +129,17 @@ above.
 ## 5. Write it
 
 ```markdown
-<one sentence: what this branch accomplishes, and for whom or why>
+<why: the problem or need, and the goal this branch achieves>
 
 - <verb-first sentence: the change, and the intention behind it>
 - <...>
 ```
 
-**Lead sentence.** Present tense, states the outcome. No `This PR…`, no
-`In this change…`. If the branch has one purpose, name it; if it genuinely has
-two, one sentence still covers both.
+**Opening — the why.** One or two sentences, present tense: what was wrong or
+missing, then the goal the branch achieves. Lead with the problem; the goal
+reads as its answer. No `This PR…`, no `In this change…`, no `## Why` heading.
+If the problem is self-evident from the goal, one sentence covers both; if the
+branch genuinely has two purposes, two sentences still cover them.
 
 **Bullets.** Each is exactly one sentence, verb-first, no trailing period
 needed but be consistent. State the intention or the reason, not the mechanism.
@@ -159,8 +161,8 @@ Style:
   not a Claude review response — the transparency prefix belongs on PR comments.
 - No file lists, no line numbers, no function-by-function walkthrough. An
   identifier in backticks is fine when it is the clearest name for the thing.
-- No `## Summary` / `## Changes` / `## Testing` headings. The lead sentence and
-  the bullets are the whole document.
+- No `## Summary` / `## Changes` / `## Testing` headings. The opening and the
+  bullets are the whole document.
 - No hedging (`should probably`), no filler (`As part of this work`), no
   restating the branch name or ticket ID as a bullet.
 - Tests get a bullet only when they are worth a reviewer's attention — a
