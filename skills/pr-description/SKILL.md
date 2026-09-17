@@ -1,6 +1,6 @@
 ---
 name: pr-description
-description: Compose a brief, human-readable PR description for the active branch from the conversation context, the saved work documents under $K, and the actual branch diff. Opens with the why — the problem and the goal of the change — then one bullet per change, each stating intention over implementation. Prints raw markdown for copy&paste into the GitHub PR; writes it to the PR only when invoked with `apply`.
+description: Compose a brief, human-readable PR description for the active branch from the conversation context, the saved work documents under $K, and the actual branch diff. Opens with three labeled one-sentence lines — Problem, Core change, Goal — then one bullet per change, each stating intention over implementation. Prints raw markdown for copy&paste into the GitHub PR; writes it to the PR only when invoked with `apply`.
 when_to_use: a branch is finished (code reviewed, review comments addressed) and its PR body needs to be written or refreshed
 argument-hint: "[<pr-url>|<pr-number>|<branch>] [apply]"
 ---
@@ -82,8 +82,8 @@ order of usefulness:
 
 Read what matches. Use each type for what it is good for:
 
-- `PLAN` / `DESIGN` — the goal and the approach. Best source for the opening *why*.
-- `INVESTIGATION` — the root cause. Best source for the *why* behind a fix.
+- `PLAN` / `DESIGN` — the goal and the approach. Best source for **Goal** and **Core change**.
+- `INVESTIGATION` — the root cause. Best source for **Problem** on a fix.
 - `IMPLEMENTATION_DETAIL` — decisions and edge cases; mine for reasons, not for prose to reuse.
 - `REVIEW` (including `*--pr-<N>--REVIEW.md`) — why a given fix exists. **Not** a
   change list: see the net-effect rule in step 4.
@@ -120,7 +120,7 @@ Leave out, unless it is the point of the PR: formatting, lint fixes, dependency
 bumps, generated files, import shuffles, renames with no behavioural effect.
 
 Target 3–7 bullets. Above 10, the grouping is too fine — merge. Whole body under
-~120 words.
+~150 words: the three opening lines plus the bullets.
 
 Every bullet must trace to a real change in the diff, and every substantive
 change in the diff must land in a bullet or be a conscious drop per the list
@@ -129,17 +129,34 @@ above.
 ## 5. Write it
 
 ```markdown
-<why: the problem or need, and the goal this branch achieves>
+**Problem:** <what is wrong or missing today>
+**Core change:** <the one mechanism that answers it>
+**Goal:** <what the branch buys, once merged>
 
 - <verb-first sentence: the change, and the intention behind it>
 - <...>
 ```
 
-**Opening — the why.** One or two sentences, present tense: what was wrong or
-missing, then the goal the branch achieves. Lead with the problem; the goal
-reads as its answer. No `This PR…`, no `In this change…`, no `## Why` heading.
-If the problem is self-evident from the goal, one sentence covers both; if the
-branch genuinely has two purposes, two sentences still cover them.
+**Opening — three labeled lines, one sentence each, present tense.** Bold label,
+sentence, next line — no blank line between them, no `## Why` heading, no
+`This PR…` / `In this change…`.
+
+- **Problem** — what is wrong or missing today, stated so a reader who has never
+  seen the branch feels the cost. Never the branch name or the ticket.
+- **Core change** — the mechanism, named: the function, the type, the shift in
+  where a value comes from. The only place mechanism belongs; the bullets carry
+  intention instead.
+- **Goal** — what the branch buys once merged. **Drop this line** when it can
+  only invert the problem — two lines saying one thing are worse than one.
+
+A branch with two genuine purposes still gets one sentence per label, not two
+paragraphs.
+
+```markdown
+**Problem:** The SDK funds wallet-paid accounts from constants compiled at the old 6960 rent rate, while mainnet is already two SIMD-0437 steps below it.
+**Core change:** `fetch_rent` reads the live Rent sysvar for every wallet-funded account, and the harness mirrors mainnet's Rent sysvar into the fork.
+**Goal:** Quotes track each remaining rent step on their own, with no constant left to update.
+```
 
 **Bullets.** Each is exactly one sentence, verb-first, no trailing period
 needed but be consistent. State the intention or the reason, not the mechanism.
