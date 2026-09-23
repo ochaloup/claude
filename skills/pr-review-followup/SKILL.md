@@ -210,7 +210,7 @@ anchors to came from:
   so it does not read as a regression.
 
 A finding caused by another finding of this same round records that chain, e.g.
-`fix for P2-R2#8`.
+`fix for R2#8-P2`.
 
 For each `fix for <prior ID>`, name which pattern it follows — they need different
 responses:
@@ -235,14 +235,14 @@ and read the description and verify that the implemented code matches the descri
 Assign IDs to findings produced in steps 2 (conversation enrichment) and 3
 (scoped code-review + backwards-check).
 
-**Format:** `P<priority>-R<ROUND>#<seq>`
+**Format:** `R<ROUND>#<seq>-P<priority>`
 
-- `<priority>` — `1` (high), `2` (medium), `3` (low). For conversation-status
-  items, derive from author intent / severity of the change request. For
-  code-review items, derive from existing severity.
 - `<ROUND>` — from step 4a.
 - `<seq>` — 1-indexed across **all** sections of this run (A → B → C), unique
   within the round.
+- `<priority>` — `1` (high), `2` (medium), `3` (low). For conversation-status
+  items, derive from author intent / severity of the change request. For
+  code-review items, derive from existing severity.
 
 Carried-forward prior findings keep their original IDs.
 
@@ -301,7 +301,7 @@ Fix plan: <concrete change, or "None — resolve thread" / "Decline">
 
 ### Section B: New Changes Review (from code-review)
 
-Use the code-review output. IDs continue the same round (e.g. `P1-R2#5`).
+Use the code-review output. IDs continue the same round (e.g. `R2#5-P1`).
 
 ```
 ### <ID> — <one-line title>
@@ -371,7 +371,7 @@ Table columns:
 | ID | Description | Origin | Status / Recommendation |
 |----|-------------|--------|--------------------------|
 
-- **ID** — e.g. `P1-R2#1`.
+- **ID** — e.g. `R2#1-P1`.
 - **Description** — one-line summary (≤ 150 chars).
 - **Origin** — from step 4c: `fix for <prior ID>`, `new`, or `pre-existing`. Keep
   it to that; the pattern (cheaper substitute / incomplete attempt) lives in the MD.

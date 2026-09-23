@@ -407,7 +407,7 @@ files reach 200KB+ and only the finding index is needed here. Give it this task:
 
 > List the files in <resolved path> matching <glob>, newest by mtime first. From
 > the newest one only, return verbatim, for every heading of any level that starts
-> with `P<pri>-R<round>#<seq>`: the heading line, the section heading above it, the `file:line`
+> with `R<round>#<seq>-P<pri>`: the heading line, the section heading above it, the `file:line`
 > reference, and the `Fix plan:` line. Never truncate a fix plan. Omit every other
 > line. Also list the distinct `R<n>` values you saw. Lead with the ledger line.
 
@@ -458,12 +458,12 @@ Never downgrade a CONFIRMED finding to PLAUSIBLE to avoid reporting it.
 
 Assign a unique ID to every current-run finding.
 
-**Format:** `P<priority>-R<ROUND>#<seq>`
+**Format:** `R<ROUND>#<seq>-P<priority>`
 
-- `<priority>` — `1` (high) / `2` (medium) / `3` (low). Map from the severity
-  you'd otherwise tag the finding with.
 - `<ROUND>` — from the previous section.
 - `<seq>` — 1-indexed within the round, unique across all priorities.
+- `<priority>` — `1` (high) / `2` (medium) / `3` (low). Map from the severity
+  you'd otherwise tag the finding with.
 
 Carried-forward prior findings keep their original IDs.
 
@@ -501,7 +501,7 @@ The MD must contain **all detail useful for fixing**:
 - Verdict (`CONFIRMED` / `PLAUSIBLE`) and which engine surfaced it
 - For carried-forward findings: original ID, round it came from, re-check notes.
 
-Every finding's body uses its `<ID>` as the heading anchor (e.g. `### P1-R1#1 — ...`).
+Every finding's body uses its `<ID>` as the heading anchor (e.g. `### R1#1-P1 — ...`).
 
 ### Step 3 — Change description, then the final summary table (last step)
 
@@ -525,7 +525,7 @@ Table columns:
 | ID | Description | Recommendation |
 |----|-------------|----------------|
 
-- **ID** — e.g. `P1-R1#1`.
+- **ID** — e.g. `R1#1-P1`.
 - **Description** — one-line summary (≤ 150 chars) of what / where.
 - **Recommendation** — concise concrete fix (≤ 80 chars). Append ` (PLAUSIBLE)` for
   findings that verified as PLAUSIBLE rather than CONFIRMED. For carried-forward
