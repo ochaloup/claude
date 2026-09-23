@@ -222,8 +222,8 @@ or `*--<HEAD_BRANCH>--*REVIEW*.md` if the context arg differs.
 files reach 200KB+ and only the finding index is needed here. Give it this task:
 
 > List the files in <resolved path> matching <glob>, newest by mtime first. From
-> the newest one only, return verbatim, for every `#### P<pri>-R<round>#<seq>`
-> heading: the heading line, the section heading above it, the `file:line`
+> the newest one only, return verbatim, for every heading of any level that starts
+> with `P<pri>-R<round>#<seq>`: the heading line, the section heading above it, the `file:line`
 > reference, and the `Fix plan:` line. Never truncate a fix plan. Omit every other
 > line. Also list the distinct `R<n>` values you saw. Lead with the ledger line.
 
@@ -283,7 +283,8 @@ Header:
 For each PRESENT, UNCERTAIN, or OUTDATED item from the current run **and** each
 carried-forward STILL_PRESENT / UNCERTAIN prior finding:
 
-  <ID> [STATUS] [KIND]                              # <ID> is e.g. P1-R1#3
+  ### <ID> — <one-line title>                      # <ID> is e.g. P1-R1#3
+  Status: <STATUS> / Kind: <KIND>
   File: <path>, line <N> — Author: <username>      (omit File/line for review-body and issue-comment items)
   Source: <thread-url | review-url | comment-url>
   Comment: <2-4 sentence summary with a short direct quote>
@@ -293,6 +294,7 @@ carried-forward STILL_PRESENT / UNCERTAIN prior finding:
   Carried from: R<prev>                            (only for carried-forward findings)
 
 KIND is one of: INLINE-THREAD, REVIEW-BODY, ISSUE-COMMENT.
+The `### <ID>` heading is what step 8a's lookup finds in the next round.
 
 Every finding must include **all detail useful for fixing** — file paths,
 line numbers, code snippets, the original comment, and the concrete fix.
@@ -322,30 +324,22 @@ Include, in this order:
 
 Table columns:
 
-| ID | Description | Status / Recommendation | Links |
-|----|-------------|--------|-------|
+| ID | Description | Recommendation |
+|----|-------------|----------------|
 
 - **ID** — e.g. `P1-R1#3`.
-- **Description** — one-line summary (≤ 150 chars) of the finding: what / where.
-  This is a condensed pointer; the full detail lives in the MD file from step 11.
-- **Status** — one of `PRESENT`, `OUTDATED`, `UNCERTAIN`, `STILL_PRESENT (Rn)`
-  (carried from round `n`).
-- **Recommendation** - is your honest recommendation as as short sentence (or two) what to do with the finding
-- **Links** — bare raw GitHub URL(s) so the reader can copy/paste the exact
-  location. Print the full URL as plain text — do NOT use markdown link syntax
-  (`[label](url)`), which hides the URL behind a label in terminals. Include
-  whichever apply, each prefixed with a short tag:
-  - The originating comment URL (`url` from the GraphQL fetch in step 6) —
-    prefix `comment: <url>`.
-  - For findings tied to a file/line, a blob link to the code at the PR head:
-    `code: https://github.com/OWNER_REPO/blob/HEAD_BRANCH/<path>#L<line>`
-    (use `path`/`line` from the comment; for a range use `#L<start>-L<end>`).
-  Put several URLs in one cell when relevant, separated by a `<br>` so each stays
-  on its own line and remains fully selectable (e.g.
-  `comment: https://… <br> code: https://…`). If no specific URL exists, print the
-  bare PR URL (`PR_URL`).
+- **Description** — one-line summary (≤ 150 chars) of what / where.
+- **Recommendation** — concise concrete fix (≤ 80 chars). Append ` (UNCERTAIN)` or
+  ` (OUTDATED)` for current-run findings with that status; PRESENT gets no suffix.
+  For carried-forward items append ` (STILL_PRESENT from Rn)` or ` (UNCERTAIN from Rn)`.
 
-Above the table print the absolute saved-file path from step 11 on its own line.
+Above the table, print in this order:
+1. The PR URL, then one line per finding with its links:
+   `<ID> comment: <url> code: <url>`. Print full bare URLs, never markdown link
+   syntax — it hides the URL in terminals. `comment:` is the `url` from step 6.
+   `code:` is `https://github.com/OWNER_REPO/blob/HEAD_BRANCH/<path>#L<line>`
+   (`#L<start>-L<end>` for a range), only for findings tied to a file/line.
+2. The absolute saved-file path from step 11, on its own line.
 
 ## 13. Ask for next action
 

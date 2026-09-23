@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. Heavier engines (an inline multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
+description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. A parallel agent describes the change, its design impact (design-impact skill) and an ASCII diagram (show-me skill). Heavier engines (an inline multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
 when_to_use: reviewing branch/uncommitted work against a base ref; for reviewer feedback on an open PR use pr-review instead
 argument-hint: "[--base <ref>] [--deep] [--topology] [max]"
 ---
@@ -125,6 +125,9 @@ judge the hits. This list is what keeps the lean path from being a shallow path.
 The report says what is wrong with the diff. The reader also needs to know what the
 diff *does*. A subagent writes that while you review, so it costs no serial time.
 
+The same agent also runs the `design-impact` and `show-me` skills, which sit next to
+this skill's directory. Resolve their absolute `SKILL.md` paths and substitute them.
+
 Kick it off right after resolving the base ref, alongside the codex call:
 
 ```
@@ -134,7 +137,12 @@ Agent({ subagent_type: "Explore",
                  the change does, in plain english. Return one lead sentence, then 3-6
                  bullets. One bullet per change. Start each bullet with the file or
                  area it touches. Say the intent, not the mechanics. Short sentences.
-                 No findings, no verdicts, no praise. Under 120 words total." })
+                 No findings, no verdicts, no praise. Under 120 words total.
+                 Then read <DESIGN_IMPACT_SKILL_MD> and follow it with
+                 `--base <BASE_REF> --embedded`. Then read <SHOW_ME_SKILL_MD> and follow
+                 it with `--base <BASE_REF> --embedded`, drawing what the design-impact
+                 block names. Return three parts in order: description, design-impact
+                 block, diagram block. Every bash call is one plain command." })
 ```
 
 This is the shape it must come back in:
@@ -148,8 +156,10 @@ Withdrawals now settle through one code path instead of two.
 ```
 
 If a bullet needs a second sentence to be understood, keep it — readable beats short.
-If the agent is unavailable or errors, write the description yourself from the diff
-you already read. It is never skipped, and never retried with a second agent.
+The 120-word cap covers the description only, not the other two parts.
+If the agent is unavailable or errors, write all three parts yourself from the diff
+you already read, following the two skills. They are never skipped, and never retried
+with a second agent.
 
 ## Parallel codex review
 
@@ -500,8 +510,10 @@ After `save-plan` reports the saved file path, print, in this order and nothing 
 1. The change description from the parallel agent, under a `**Changes under review**`
    heading — lead sentence plus its bullets, as shown in the section above. Trim any
    preamble the agent added.
-2. The absolute saved-file path from step 2, on its own line.
-3. The table, as the **last** output. No prose after it.
+2. The agent's design-impact block, verbatim.
+3. The agent's diagram block, or its `Diagram: none` line, verbatim.
+4. The absolute saved-file path from step 2, on its own line.
+5. The table, as the **last** output. No prose after it.
 
 The table rows, in this order:
 1. Every carried-forward prior finding still unaddressed (STILL_PRESENT /
@@ -523,6 +535,8 @@ Table columns:
 
 The chapter body is ordered as:
 
+0. **Changes under review** — the agent's three parts: description, design-impact
+   block, diagram.
 1. **Compound review** (first, primary) — your verified findings with the findings
    of whichever other engines ran folded in. Each finding uses its `<ID>` and
    carries its verdict. Note the engine that earned it (e.g. `codex`,
