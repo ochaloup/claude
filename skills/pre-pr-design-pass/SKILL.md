@@ -373,7 +373,7 @@ nobody will otherwise remember.
 - Run this **after** `code-review` and before `pr-description`. `code-review` asks
   whether each hunk is correct; this asks whether the hunk should exist at all.
 - Its findings are design proposals, not defects — keep them out of
-  `code-review`'s `P<priority>-R<round>#<seq>` ID space and out of its round
+  `code-review`'s `R<round>#<seq>-P<priority>` ID space and out of its round
   tally.
 - A correctness bug noticed while running the lenses (the drifting DTO field
   above, for instance) is still worth reporting — mark it clearly as a correctness

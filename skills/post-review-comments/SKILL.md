@@ -71,7 +71,7 @@ conversation's PR, else the current branch.
 | Form | Meaning |
 |---|---|
 | `all`, "all findings" | every finding in the current report that is still open |
-| finding IDs (`P1-R1#3`, `a b c`, `a+b+c`) | exactly those, in the order given |
+| finding IDs (`R1#3-P1`, `a b c`, `a+b+c`) | exactly those, in the order given |
 | free text naming code ("this line", "the retry loop in fees.ts") | one ad-hoc comment; the user's sentence is the finding |
 | nothing | the findings under discussion right now; if that is ambiguous, ask |
 
@@ -213,7 +213,7 @@ costs.
 - Names no local repository state. No "not yet pushed", "uncommitted", no branch
   mechanics. Write it as if the code is already what the PR shows, because from
   the reader's side it is.
-- No finding IDs in the body. `P1-R1#3` means nothing to a PR reader; the chat
+- No finding IDs in the body. `R1#3-P1` means nothing to a PR reader; the chat
   report carries the mapping.
 - A low-priority point may open `🤖 claude: nit — …`. Nothing else gets a tag.
 

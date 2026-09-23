@@ -20,7 +20,7 @@ filler() {
   echo '### A1 — Your items'
   for n in $(seq 1 11); do
     echo
-    echo "#### P2-R2#${n} [PRESENT] [MY_THREAD] [INLINE-THREAD]"
+    echo "#### R2#${n}-P2 [PRESENT] [MY_THREAD] [INLINE-THREAD]"
     echo "\`src/module_${n}.rs:${n}0\`"
     filler
     echo "Fix plan: Route the call through the scoped wrapper in \`src/module_${n}.rs\` and add a mismatch test."
@@ -28,7 +28,7 @@ filler() {
   echo
   echo '### A2 — Others inline threads'
   echo
-  echo '#### P1-R2#12 [PRESENT] [OTHERS_THREAD] [INLINE-THREAD]'
+  echo '#### R2#12-P1 [PRESENT] [OTHERS_THREAD] [INLINE-THREAD]'
   echo '`bot/src/commands/consume_orders.rs:44`'
   filler
   echo 'Fix plan: Keep the consumer own abort handle so the sender drops and the workers exit. ENDMARK5X8.'
@@ -39,7 +39,7 @@ filler() {
   echo
   echo '## Section A: Conversation Status'
   echo
-  echo '#### P9-R1#99 [ADDRESSED] [MY_THREAD] [INLINE-THREAD]'
+  echo '#### R1#99-P9 [ADDRESSED] [MY_THREAD] [INLINE-THREAD]'
   echo '`src/gone.rs:1`'
   echo 'Fix plan: Already addressed in round 1, superseded by the round 2 file.'
 } > plans/demo--widget-refactor--pr-99-r1--REVIEW.md

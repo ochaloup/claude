@@ -223,7 +223,7 @@ files reach 200KB+ and only the finding index is needed here. Give it this task:
 
 > List the files in <resolved path> matching <glob>, newest by mtime first. From
 > the newest one only, return verbatim, for every heading of any level that starts
-> with `P<pri>-R<round>#<seq>`: the heading line, the section heading above it, the `file:line`
+> with `R<round>#<seq>-P<pri>`: the heading line, the section heading above it, the `file:line`
 > reference, and the `Fix plan:` line. Never truncate a fix plan. Omit every other
 > line. Also list the distinct `R<n>` values you saw. Lead with the ledger line.
 
@@ -233,7 +233,7 @@ instead if the agent is unavailable or the ledger fails.
 
 - If no matching file: this is **round 1** → `ROUND = 1`.
 - If a matching file exists: parse its findings for the highest `R<n>` in the
-  IDs (format `P<pri>-R<n>#<seq>`). Set `ROUND = highest + 1`.
+  IDs (format `R<n>#<seq>-P<pri>`). Set `ROUND = highest + 1`.
 
 ### 8b. Load prior findings and re-verify
 
@@ -242,23 +242,23 @@ For each finding the `locator` returned from the most recent matching prior file
 2. Re-check against current code at HEAD of the PR branch.
 3. Classify as:
    - **ADDRESSED** — concern is gone. Drop from the new run's outputs (but record the ID as addressed for the summary tally).
-   - **STILL_PRESENT** — concern remains. Carry it forward into the new run **keeping its original ID** (do not renumber across rounds — prior `P1-R1#3` stays `P1-R1#3`).
+   - **STILL_PRESENT** — concern remains. Carry it forward into the new run **keeping its original ID** (do not renumber across rounds — prior `R1#3-P1` stays `R1#3-P1`).
    - **UNCERTAIN** — cannot determine; carry forward with its original ID.
 
 ## 9. Assign IDs to current-run findings
 
 Assign a unique ID to every finding generated in this run (step 7).
 
-**Format:** `P<priority>-R<ROUND>#<seq>`
+**Format:** `R<ROUND>#<seq>-P<priority>`
 
-- `<priority>` — `1` (high), `2` (medium), `3` (low). Pick based on impact/blocker risk.
 - `<ROUND>` — the round number from 8a.
 - `<seq>` — 1-indexed sequence, **unique within this round across all priorities**
-  (so `P1-R1#1`, `P3-R1#2`, `P1-R1#3` — seq does not restart per priority).
+  (so `R1#1-P1`, `R1#2-P3`, `R1#3-P1` — seq does not restart per priority).
+- `<priority>` — `1` (high), `2` (medium), `3` (low). Pick based on impact/blocker risk.
 
-Examples: `P1-R1#1`, `P2-R1#2`, `P1-R2#1`.
+Examples: `R1#1-P1`, `R1#2-P2`, `R2#1-P1`.
 
-Carried-forward prior findings keep their original IDs (e.g. `P1-R1#3` still
+Carried-forward prior findings keep their original IDs (e.g. `R1#3-P1` still
 appears in a round-2 run if unaddressed).
 
 ## 10. Detailed findings (for the MD file)
@@ -283,7 +283,7 @@ Header:
 For each PRESENT, UNCERTAIN, or OUTDATED item from the current run **and** each
 carried-forward STILL_PRESENT / UNCERTAIN prior finding:
 
-  ### <ID> — <one-line title>                      # <ID> is e.g. P1-R1#3
+  ### <ID> — <one-line title>                      # <ID> is e.g. R1#3-P1
   Status: <STATUS> / Kind: <KIND>
   File: <path>, line <N> — Author: <username>      (omit File/line for review-body and issue-comment items)
   Source: <thread-url | review-url | comment-url>
@@ -327,7 +327,7 @@ Table columns:
 | ID | Description | Recommendation |
 |----|-------------|----------------|
 
-- **ID** — e.g. `P1-R1#3`.
+- **ID** — e.g. `R1#3-P1`.
 - **Description** — one-line summary (≤ 150 chars) of what / where.
 - **Recommendation** — concise concrete fix (≤ 80 chars). Append ` (UNCERTAIN)` or
   ` (OUTDATED)` for current-run findings with that status; PRESENT gets no suffix.

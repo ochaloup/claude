@@ -1,6 +1,6 @@
 ---
 name: fix-review-findings
-description: Fix findings that a review already produced in this conversation. Reads the selector the user gives (all, P1#3, "the last one"), re-verifies each selected finding against current code before touching anything, plans the fixes, applies them one at a time with the project's own checks, and ends with a three-column table — finding, resolution, notes. Refuted and already-fixed findings are reported, never edited around. Never posts to GitHub, never commits.
+description: Fix findings that a review already produced in this conversation. Reads the selector the user gives (all, R1#3, "the last one"), re-verifies each selected finding against current code before touching anything, plans the fixes, applies them one at a time with the project's own checks, and ends with a three-column table — finding, resolution, notes. Refuted and already-fixed findings are reported, never edited around. Never posts to GitHub, never commits.
 when_to_use: a review round exists in the conversation (code-review, pr-review, pr-review-followup, topology-review, security-review, a saved REVIEW doc) and the user picked which findings to fix. This skill fixes; it does not review. To produce findings use code-review or pr-review; to reply on PR threads afterwards use answer-existing-review.
 argument-hint: "[all | <ID selectors> | ordinals | descriptions]"
 ---
@@ -74,16 +74,16 @@ Build a working list before reading any code — one row per finding:
 |---|---|
 | `all`, `all findings` | every finding in the latest report's table, carried-forward included |
 | `all P1`, `P1` | every priority-1 finding in that table |
-| `P1#3`, `P1-R1#3`, `#3`, `3` | one finding — loose forms match the canonical `P<pri>-R<n>#<seq>`, latest round assumed |
-| `P1#1-3` | that range within that priority |
+| `R1#3-P1`, `R1#3`, `#3`, `3` | one finding — loose forms match the canonical `R<n>#<seq>-P<pri>`, latest round assumed |
+| `#1-3`, `R1#1-3` | that seq range within the round |
 | `the last one`, `the first two` | positions in the last printed table, in its row order |
 | `the missing await one` | matched by content against the one-line descriptions |
-| `all except P3#2`, `all but the last` | the set minus the exclusion |
-| `P1#3 and the last one` | union of `,` / `and`-joined selectors, deduplicated |
+| `all except #2`, `all but the last` | the set minus the exclusion |
+| `#3 and the last one` | union of `,` / `and`-joined selectors, deduplicated |
 
 Rules:
 
-- **Echo the resolved set before any work**: `Selected: P1-R1#1, P1-R1#3, P2-R1#5 (3 of 8)`.
+- **Echo the resolved set before any work**: `Selected: R1#1-P1, R1#3-P1, R1#5-P2 (3 of 8)`.
 - A selector matching **nothing** stops the skill. Ask; never silently drop it.
 - A selector matching **more than one** candidate stops the skill. Ask which.
 - Ordinals resolve against the **last table the user saw**, in its row order —
@@ -151,8 +151,8 @@ Print one verdict line per finding before planning.
 Short and numbered. One line per finding, each with its verification check:
 
 ```
-1. P1-R1#3 — await the flush in closeWriter (src/writer.ts) → verify: writer tests pass
-2. P2-R1#5 — drop the unreachable branch (src/parse.ts)     → verify: lint + parse tests
+1. R1#3-P1 — await the flush in closeWriter (src/writer.ts) → verify: writer tests pass
+2. R1#5-P2 — drop the unreachable branch (src/parse.ts)     → verify: lint + parse tests
 ```
 
 Group by file. State ordering where it matters: two findings in one function,
