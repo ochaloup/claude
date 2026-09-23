@@ -287,7 +287,8 @@ Open items: <total> (<N inline threads>, <N review-body sub-asks>, <N issue comm
 
 For each item:
 ```
-<ID> [STATUS] [MY_THREAD|OTHERS_THREAD] [INLINE-THREAD|REVIEW-BODY|ISSUE-COMMENT]
+### <ID> — <one-line title>
+[STATUS] [MY_THREAD|OTHERS_THREAD] [INLINE-THREAD|REVIEW-BODY|ISSUE-COMMENT]
 File: <path>, line <N> — Author: <username>     (omit File/line for REVIEW-BODY and ISSUE-COMMENT)
 Permalink / Source: <full clickable URL — no markdown shortening>
 Original comment: <verbatim quote of the single sub-ask, plus 1-2 sentences of context>
@@ -303,7 +304,8 @@ Fix plan: <concrete change, or "None — resolve thread" / "Decline">
 Use the code-review output. IDs continue the same round (e.g. `P1-R2#5`).
 
 ```
-<ID> [SEVERITY: high|medium|low]
+### <ID> — <one-line title>
+[SEVERITY: high|medium|low]
 Category: <objective name>
 File: <path>, lines <start>-<end>
 Permalink: <full clickable URL>
@@ -314,7 +316,7 @@ Suggested fix: <concrete fix>
 
 ### Section C: Backwards-check Findings (if any)
 
-Same format as B, prefixed `[BACKWARDS-CHECK]`.
+Same format as B, with `[BACKWARDS-CHECK]` before the severity tag.
 
 ### Section D: Carried-forward prior findings (if any)
 
@@ -322,7 +324,8 @@ Reproduce STILL_PRESENT / UNCERTAIN entries from step 4b in their original IDs,
 with current code re-check notes.
 
 ```
-<ID> [STILL_PRESENT | UNCERTAIN] (carried from R<prev>)
+### <ID> — <one-line title>
+[STILL_PRESENT | UNCERTAIN] (carried from R<prev>)
 File: <path>, line <N>
 Original finding: <one-paragraph recap from prior MD>
 Current code: <relevant lines>
