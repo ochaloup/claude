@@ -406,8 +406,8 @@ can pick up where the last one left off.
 files reach 200KB+ and only the finding index is needed here. Give it this task:
 
 > List the files in <resolved path> matching <glob>, newest by mtime first. From
-> the newest one only, return verbatim, for every `#### P<pri>-R<round>#<seq>`
-> heading: the heading line, the section heading above it, the `file:line`
+> the newest one only, return verbatim, for every heading of any level that starts
+> with `P<pri>-R<round>#<seq>`: the heading line, the section heading above it, the `file:line`
 > reference, and the `Fix plan:` line. Never truncate a fix plan. Omit every other
 > line. Also list the distinct `R<n>` values you saw. Lead with the ledger line.
 
