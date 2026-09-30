@@ -2,7 +2,8 @@
 name: dependency-update-check
 description: Verifies a dependency version bump won't break the service before it merges — resolves exactly which packages changed and by how much, installs the new versions, builds/typechecks, starts the service locally to confirm it boots and stays healthy, runs the test suite when that's reasonable, and researches each meaningfully-bumped package's changelog (web retrieval + prior knowledge) for breaking changes the codebase actually exercises. Ends with a SAFE/RISKY/UNSAFE verdict.
 when_to_use: before merging a manual pnpm/cargo/pip update or a Renovate/Dependabot PR, when "CI is green" isn't enough assurance that the new versions won't crash the service
-argument-hint: "[<package>[@<version>]|<PR#>|<PR-url>|--base <ref>|(none = uncommitted manifest changes, else branch vs base)]"
+model: sonnet
+argument-hint: "[--repo <name|owner/repo|path>] [--branch <branch>|<package>[@<version>]|<PR#>|<PR-url>|--base <ref>|(none = uncommitted manifest changes, else branch vs base)]"
 ---
 
 # Dependency Update Safety Check
@@ -23,17 +24,45 @@ constructs too.
 
 ## 1. Resolve scope
 
-Parse the arguments:
+### 1a. Resolve the repository
 
+- **`--repo <path>`** (an existing directory) — work there.
+- **`--repo <name>` or `<owner/repo>`** — take the last path segment as the name.
+  Look for `~/marinade/<name>`, then `~/my-testing/<name>`, and work in the first
+  one that is a git repo. If neither exists, ask the user whether to clone it
+  into `~/my-testing` — never clone silently.
+- **no `--repo`** — work in the current repository.
+
+Run every later command inside that repo. Record the branch it is on now, so step
+10 can switch back.
+
+### 1b. Refresh the default branch
+
+Do this whenever `--branch` or `<PR#>` is given, so failures can be compared
+against current default-branch code:
+
+1. `git status` — if there's uncommitted work, stash it (`git stash push -u`).
+2. Resolve `<remote>` with `git remote -v`: the only remote, else the one whose URL
+   matches the GitHub repo. It is often not `origin`.
+3. `git fetch <remote> --prune`.
+4. Resolve the default branch: `git symbolic-ref --short refs/remotes/<remote>/HEAD`,
+   falling back to `main`, then `master`.
+5. Check it out and `git pull --ff-only`. If the fast-forward fails, stop and
+   report it — never reset or rebase the user's local default branch.
+
+### 1c. Parse the scope arguments
+
+- **`--branch <branch>`** — `git fetch <remote> <branch>`, then `git checkout <branch>`
+  (creates a tracking branch). If a local branch of that name already exists,
+  check it out and `git pull --ff-only`. Diff base is the default branch from 1b.
 - **`<package>[@<version>]`** — a bump not yet applied. Read the package's current
   declared version from the manifest, then apply the bump yourself (edit the
   manifest / run the manager's upgrade command) before continuing to step 2. This
   is a local, reversible change (`git checkout` undoes it) — proceed, but say
   what you changed.
-- **`<PR#>` / `<PR-url>`** — check `git status` first; if there's uncommitted work,
-  stash it (`-u`) before checking out the PR branch. Resolve owner/repo/branch the
-  same way the `pr-review` skill does, then `gh pr checkout <PR#>`. Diff base is
-  the PR's base branch.
+- **`<PR#>` / `<PR-url>`** — a PR URL also resolves the repo as in 1a. Resolve
+  owner/repo/branch the same way the `pr-review` skill does, then
+  `gh pr checkout <PR#>`. Diff base is the PR's base branch.
 - **`--base <ref>`** — diff the current branch against `<ref>`.
 - **none** — check `git status` for uncommitted changes to manifest/lock files
   (`package.json`, `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`,
@@ -73,6 +102,11 @@ patch-level bumps into a single summary line ("N transitive deps, patch-level
 only") — they're not worth a row each, and step 7 skips deep research on them
 unless something later traces a failure back to one.
 
+Never read a large lockfile diff in the main context, and never read it twice.
+Hand it to one `general-purpose` agent with `model: haiku`. It reads the diff once
+and returns only the delta table, plus a one-line note on any re-keying noise,
+such as peer suffixes that don't change a version.
+
 ## 4. Install, build, typecheck, lint
 
 Run the ecosystem's install command from the table above, capturing full output
@@ -83,6 +117,9 @@ Then run the project's own verification commands and record each result:
 build/typecheck, then `pnpm fix`/`pnpm lint` or `cargo fmt && cargo clippy` if
 the project has them. A failure here is high-signal — an incompatible major bump
 usually shows up here first, before runtime.
+
+In a workspace, build through the root `build` script or `pnpm -r build`, which run
+in dependency order. Building packages one by one fails on missing sibling builds.
 
 ## 5. Start the service locally
 
@@ -95,7 +132,7 @@ starting something that doesn't compile just reproduces the same failure.
 
 Determine the start command, in priority order: `package.json`
 `scripts.dev`/`scripts.start`, `wrangler dev` for Workers projects (see the
-`wrangler` skill for flags), `cargo run`, `go run .`, a `docker-compose` service
+`wrangler` skill for flags, if it is enabled), `cargo run`, `go run .`, a `docker-compose` service
 definition, or the README's quick-start. In a workspace, start only the
 service(s) whose dependency tree includes the changed package(s).
 
@@ -129,6 +166,13 @@ entirely.
 If tests are skipped, state why explicitly in the report — never omit this
 section silently.
 
+When a step in 4-6 fails and a refreshed default branch exists (step 1b), rerun
+that one step on the default branch. A failure on both is not caused by the bump,
+but still report it; a failure only on the branch is the bump's. Run it in a
+detached worktree in the scratchpad (`git worktree add --detach <dir> <default>`),
+install there, and remove the worktree afterwards. Don't switch the user's tree,
+because installs there can skip the lockfile change.
+
 ## 7. Research compatibility for meaningfully-bumped packages
 
 Bound the effort — not every changed package needs research:
@@ -142,7 +186,7 @@ Bound the effort — not every changed package needs research:
   silent truncation reads as full coverage.
 
 For 3 or more packages needing research, parallelize via the `Agent` tool
-(`general-purpose`, max 4 concurrent) — one self-contained prompt per package
+(`general-purpose`, `model: sonnet`, max 4 concurrent) — one self-contained prompt per package
 with the repo path, package name, and exact from/to version range. For 1-2
 packages, do it inline. Each research pass must:
 
@@ -150,7 +194,7 @@ packages, do it inline. Each research pass must:
    (npm registry page, GitHub releases, crates.io, PyPI — whichever applies) via
    `WebFetch`/`WebSearch`. Don't rely on pretrained knowledge alone — it may
    predate the release. Explicitly flag when retrieval failed and the verdict
-   falls back to pretrained knowledge (knowledge cutoff January 2026 — anything
+   falls back to pretrained knowledge (knowledge cutoff June 2026 — anything
    released after is unverifiable from training alone).
 2. Grep the codebase for actual usage of the package's changed surface (imported
    symbols, config keys, CLI flags named in the breaking-change notes). A
@@ -160,11 +204,31 @@ packages, do it inline. Each research pass must:
 
 ## 8. Verdict and report
 
-Combine steps 3-7 into one report, printed to chat:
+### 8a. Close the gaps before reporting
+
+If the draft verdict is SAFE WITH CAVEATS or RISKY, each gap has a follow-up check.
+Run every check you can, then re-judge the verdict:
+
+- **Checks CI can cover** — find the branch's PR (`gh pr list --head <branch>`),
+  then run `gh pr checks <PR#>`. Read the workflow file to confirm the job really
+  runs the skipped suite on the branch head SHA. If it is green, the gap is closed.
+  If it is red, read the failed log and apply the default-branch comparison from
+  step 6. If it is pending, report it as pending.
+- **A caution package** — grep deeper for the ambiguous usage, or retry the
+  changelog retrieval from another source (GitHub releases, registry page).
+- **A missing local service** — start it only from the repo's own local setup
+  (`docker-compose`, a test script), never from production config.
+
+Ask the user before installing a toolchain or changing global tools. Don't loop:
+run each follow-up once. The goal is a final **SAFE** or **UNSAFE**. Keep SAFE
+WITH CAVEATS or RISKY only for gaps no local or CI check can close.
+
+Combine steps 3-8a into one report, printed to chat:
 
 ```
 ## Dependency Update Safety Check
 
+Repo: <path> · <branch> vs <default branch @ short sha>
 Scope: <ecosystem> · <package manager> · <N> package(s) changed (<M> direct, <T> transitive-only)
 
 | Package | From | To | Bump | Risk |
@@ -194,8 +258,11 @@ Scope: <ecosystem> · <package manager> · <N> package(s) changed (<M> direct, <
 ### Overall verdict: SAFE / SAFE WITH CAVEATS / RISKY / UNSAFE
 <one paragraph rationale>
 
-### Recommended next steps
-<only if not a clean SAFE>
+### Gaps closed (8a)
+<each follow-up check and its result, or "none needed">
+
+### Open gaps
+<only the gaps 8a could not close, each with the reason>
 ```
 
 Verdict rules:
@@ -207,10 +274,10 @@ Verdict rules:
   exposure, or research fell back to pretrained knowledge for a release past the
   cutoff), or tests were skipped for a change touching a package with real usage.
 - **SAFE WITH CAVEATS** — install/build/tests/research all clean, but startup or
-  tests couldn't be verified locally (missing infra) — name the gap so it's
-  covered elsewhere (staging/CI) before merge.
-- **SAFE** — install, build, startup, and tests all passed, and every
-  meaningfully-bumped package researched clean.
+  tests couldn't be verified locally or in CI after 8a — name the gap so it's
+  covered elsewhere (staging) before merge.
+- **SAFE** — install, build, startup, and tests all passed (locally, or in CI as
+  confirmed in 8a), and every meaningfully-bumped package researched clean.
 
 ## 9. Persisting
 
@@ -223,5 +290,6 @@ batched Renovate/Dependabot PR, for example).
 ## 10. Cleanup
 
 Before finishing: confirm no background service process from step 5 is still
-running, and if you checked out a PR branch in step 1, leave the working tree as
-you found it (switch back, pop any stash) unless the user asked to stay on it.
+running, and if you checked out a branch in step 1, leave the working tree as
+you found it (switch back to the branch recorded in 1a, pop any stash) unless the
+user asked to stay on it.
