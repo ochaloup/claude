@@ -83,6 +83,8 @@ patchesJson6902:
         value: <N>
 ```
 
+Take `<aws-account-id>` from an existing overlay in the repo; never invent it.
+
 Note: the image automation bot (which opens PRs titled "Change image revision for marinade.finance/<image> to <sha>") MATCHES on the `# env:<env>` comment marker. Keep it exactly as `# env:dev` / `# env:prod`.
 
 The namespace name does NOT have to match the directory name. Convention is `<svc>-<env>` for new services. (Some older workloads use the shared `dev` / `prod` namespace — don't follow those for new services.)

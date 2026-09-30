@@ -14,9 +14,11 @@ Maintenance/Improvements project.
 
 | | |
 |---|---|
-| Parent | `data_source_id: <tasks-data-source-id>` |
-| Project page | `https://app.notion.com/p/<project-id>` |
-| User (chalda) | `<user-id>` |
+| Parent | `<tasks-data-source-id>` — the Tasks database the project page links to |
+| Project page | `<project-url>` — `notion-search` for "General System Maintenance/Improvements" |
+| User | `<user-id>` — `notion-get-users` with `user_id: "self"` |
+
+Resolve all three before writing; never guess an ID.
 
 Use the `notion-create-pages` tool. Never write the page any other way.
 
@@ -44,7 +46,7 @@ Status    Backlog
 Priority  <from the table above>
 Assignee  <user-id>
 Notify    ["<user-id>"]
-Projects  ["https://app.notion.com/p/<project-id>"]
+Projects  ["<project-url>"]
 Tags      <what fits, e.g. Backend, Tech Debt, Infrastructure, Bug>
 ```
 
