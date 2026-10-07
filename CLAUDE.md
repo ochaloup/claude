@@ -44,8 +44,17 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 - Run ONE command per bash invocation. No pipes (|), no semicolons (;), no redirects (>).
 - To save command output: let Claude capture it from stdout, or use the Write tool.
 - To post-process JSON: run jq as a separate bash call on a file written in a prior step.
+- Exception: bulk or multi-step work may go in a script in the scratchpad, run as one `bash <script>` call.
 - Reason: multi-command strings don't match the project's permission allow-list patterns
   and will trigger interactive permission prompts.
+
+### 0.22. Report blockers
+
+- When a tool call fails, is denied, or needs auth/access, say so right away in one line.
+- Do not silently work around it. If you used a fallback, name it.
+- End the reply with a short **Blockers** list: what failed, why, what you need from me.
+- Include skill problems too: unclear or contradicting steps, missing tools, steps you skipped.
+- No blockers → omit the list.
 
 ## 1. Think Before Coding
 

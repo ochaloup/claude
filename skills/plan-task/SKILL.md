@@ -1,6 +1,6 @@
 ---
 name: plan-task
-description: Plan a task before any code is written. Researches the codebase through cheap delegated agents, derives one approach and says why it beat the alternatives, breaks it into verifiable steps, and ends with the open questions and doubts that must be answered first. Saves the plan through the save-plan skill. Runs on Fable — the plan is made once and read many times, so the reasoning is worth the credits. Writes no code.
+description: Plan a task before any code is written. Researches the codebase through cheap delegated agents, runs an independent codex plan in parallel and weighs its ideas, derives one approach and says why it beat the alternatives, breaks it into verifiable steps, and ends with the open questions and doubts that must be answered first. Saves the plan through the save-plan skill. Runs on Fable — the plan is made once and read many times, so the reasoning is worth the credits. Writes no code.
 when_to_use: a task is defined and needs a design before implementation starts; re-invoke with `finalize` once the open questions have been answered. To persist an already-finished plan use save-plan; to review code that exists use code-review.
 argument-hint: "[<what the task is>] | finalize"
 model: fable
@@ -43,6 +43,31 @@ So: **you do not explore. Agents explore for you.**
 
 If Stage 1 runs with no argument, take the task from the conversation. If the
 conversation does not carry one either, ask what the task is and stop.
+
+## Stage 1 — Codex plan, in parallel
+
+Codex runs on a separate quota, so it is the cheapest independent second plan.
+Always run it.
+
+1. **Kick it off first**, before the research agents. Write the brief with `Write` to
+   `<scratchpad>/codex-task.md`: the task in the user's own terms, plus this ask —
+   "Plan only, write no code. Give: approach, rejected alternatives, steps, risks,
+   open questions. Cite `file:line`. Under 400 words." Never put your own leanings in
+   the brief; codex that sees your direction tends to agree with it.
+2. Run it as a background bash call (`run_in_background=true`), from the repo root:
+   ```
+   codex exec -s read-only --skip-git-repo-check -o <scratchpad>/codex-plan.md "Read <scratchpad>/codex-task.md and do what it asks."
+   ```
+3. Do the research and draft the plan meanwhile. Do not wait for codex.
+4. **When it finishes**, read `<scratchpad>/codex-plan.md` and judge each idea
+   against the code your agents returned:
+   - Better approach or a step you missed → change the plan.
+   - An alternative you still reject → `## Rejected`, with the reason.
+   - A disagreement the plan depends on → an open question, with your `Assumed:`.
+   - Duplicate or noise → drop it.
+
+If `codex` is not installed or the call errors, note the reason in one line and
+continue. Stage 2 does not re-run codex.
 
 ## Stage 1 — Research
 
@@ -141,6 +166,8 @@ Status: OPEN — 3 questions unresolved (2 blocking)
 
 ## Rejected
 - <alternative> — <why not>, one line each
+
+Codex: <n> ideas adopted, <n> rejected, <n> became questions — or why it did not run.
 
 ## Steps
 1. <step> → verify: <check>

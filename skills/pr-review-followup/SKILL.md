@@ -226,9 +226,9 @@ Tally for the header: how many new findings trace back to prior-round fixes.
 
 ## 5. Verify against description in notion task
 
-If you have access to notion (Marinade the most probably) and the PR title
-has got with format [GEN-<number>] then find the Notion task with that `GEN` id
-and read the description and verify that the implemented code matches the description.
+The scoped `code-review` run in step 3 already did this against the whole PR — its
+Task conformance section. Carry its verdicts and findings into the report; do not
+fetch the task again.
 
 ## 6. Assign IDs to current-run findings
 

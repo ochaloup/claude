@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. A parallel agent describes the change, its design impact (design-impact skill) and an ASCII diagram (show-me skill). Heavier engines (an inline multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
+description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. When the PR or branch names a Notion task (GEN-<n>), checks the whole PR against the task's requirements and acceptance criteria, in both directions. A parallel agent describes the change, its design impact (design-impact skill) and an ASCII diagram (show-me skill). Heavier engines (an inline multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
 when_to_use: reviewing branch/uncommitted work against a base ref; for reviewer feedback on an open PR use pr-review instead
 argument-hint: "[--base <ref>] [--deep] [--topology] [max]"
 ---
@@ -181,6 +181,41 @@ Always run it.
 
 If `codex` is not installed (`which codex` fails) or the call errors, note the
 reason in one line and continue.
+
+## Task conformance — when the branch is linked to a Notion task
+
+The other engines ask whether the code is correct. This asks whether it is the code
+the task asked for. Cheap — one Notion fetch — so it runs on every invocation that
+finds a task.
+
+1. **Find the task id.** Run `gh pr view --json url,number,title,body,baseRefName`
+   right after resolving the base ref; keep the result for Reporting. Look for
+   `GEN-<number>` in the PR title, then the PR body, then the branch name, and for a
+   `notion.so` link in the body. No PR and no id in the branch name → skip, one line.
+2. **Fetch it.** Load the Notion tools with `ToolSearch` (`notion-search notion-fetch`).
+   A `notion.so` link → `notion-fetch` it. Otherwise `notion-search` for
+   `GEN-<number>`, keep only the hit whose id property is exactly that, and fetch it.
+   Notion unavailable, or no exact hit → say so in one line and skip. Never review
+   against a guessed task.
+3. **Extract the asks.** From the page, list each requirement and acceptance
+   criterion as a numbered item, quoted or tightly paraphrased. A vague task gives a
+   short list; do not invent criteria to fill it.
+4. **Judge against the whole PR**, not the `--base` slice: `git diff
+   origin/<baseRefName>...HEAD` (or the base ref when there is no PR). A scoped run
+   from pr-review-followup would otherwise report done work as missing. Each ask gets:
+   - **MET** — cite the `file:line` that does it.
+   - **PARTIAL** — what is done, what is missing.
+   - **MISSING** — nothing in the diff does it.
+   - **DIVERGENT** — the diff does it differently from what the task says.
+5. **Then the reverse direction:** changes in the diff that no ask explains. Flag
+   only behaviour changes — not refactors or tests serving an ask.
+
+PARTIAL, MISSING and DIVERGENT asks become findings, priority by the ask's weight
+(a core requirement is P1). An unexplained change becomes a P3 finding — scope
+creep or a task that is out of date; say which looks likelier. They go through the
+verification ladder like any other candidate; the engine is `task`.
+
+The extracted asks are the `--criteria` for the topology engine when it runs.
 
 ## Deep review engine — only with `--deep` or `max`
 
@@ -386,7 +421,7 @@ requested engine did not run.
 
 ## Reporting
 
-- Check if there is an open PR for the current branch using `gh pr view --json url,number` (fall back to `gh pr list --head <branch>`).
+- Check if there is an open PR for the current branch — reuse the `gh pr view` result from Task conformance (fall back to `gh pr list --head <branch>`).
 - If a PR exists, store its URL and number. You will need these to construct permalink URLs.
 - For every finding, include a clickable GitHub permalink to the relevant code (when the branch is pushed to github, otherwise construct nothing). Build the URL as:
   `https://github.com/<owner>/<repo>/blob/<branch>/<file>#L<start>-L<end>`
@@ -486,6 +521,8 @@ not cover the diff. Never demote one into a closing footnote; they change how mu
 the findings below are worth.
 
 - Write a short prose summary.
+- Task conformance in one line: `Task GEN-<n>: <m> of <k> asks met, <p> partial,
+  <x> missing, <d> divergent, <u> unexplained changes` — or why it was skipped.
 - If a PR exists, the summary MUST include the PR URL and clickable GitHub links (show directly in console whole link! with whole hash etc, no simplification via some md formatting) to all findings.
 - If no PR exists, use blob permalinks against the branch instead.
 
@@ -541,9 +578,12 @@ The chapter body is ordered as:
    of whichever other engines ran folded in. Each finding uses its `<ID>` and
    carries its verdict. Note the engine that earned it (e.g. `codex`,
    `topology/fan-out`).
-2. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries
+2. **Task conformance** (when a task was found) — task id and link, then one line
+   per ask: number, the ask, MET / PARTIAL / MISSING / DIVERGENT, `file:line` or the
+   finding ID. Then the unexplained changes. When skipped, one line saying why.
+3. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries
    from prior rounds, original IDs preserved.
-3. **Raw codex review** — codex's findings verbatim, so the reader can audit
+4. **Raw codex review** — codex's findings verbatim, so the reader can audit
    independently. Drop only its reasoning preamble and progress chatter; never edit,
    merge or summarise a finding itself.
 
