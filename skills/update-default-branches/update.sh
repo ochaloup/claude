@@ -6,28 +6,36 @@ export GIT_SSH_COMMAND="ssh -o BatchMode=yes"
 
 update_repo() {
   local repo=${1%/.git}
-  local url branch current before after out
-  url=$(git -C "$repo" remote get-url origin 2>/dev/null) || { printf 'SKIP\t%s\tno origin remote\n' "$repo"; return; }
-  [[ $url == *github.com* ]] || { printf 'SKIP\t%s\torigin is not on github: %s\n' "$repo" "$url"; return; }
-
-  branch=$(git -C "$repo" symbolic-ref --short -q refs/remotes/origin/HEAD)
-  if [[ -z $branch ]]; then
-    git -C "$repo" remote set-head origin --auto >/dev/null 2>&1
-    branch=$(git -C "$repo" symbolic-ref --short -q refs/remotes/origin/HEAD)
+  local remote remotes url branch current before after out
+  remotes=$(git -C "$repo" remote)
+  if [[ $'\n'$remotes$'\n' == *$'\n'origin$'\n'* ]]; then
+    remote=origin
+  elif [[ -n $remotes && $remotes != *$'\n'* ]]; then
+    remote=$remotes
+  else
+    printf 'SKIP\t%s\tno origin and not exactly one remote: %s\n' "$repo" "${remotes//$'\n'/ }"; return
   fi
-  branch=${branch#origin/}
-  [[ -n $branch ]] || { printf 'FAIL\t%s\tcannot resolve default branch of origin\n' "$repo"; return; }
+  url=$(git -C "$repo" remote get-url "$remote")
+  [[ $url == *github.com* ]] || { printf 'SKIP\t%s\t%s is not on github: %s\n' "$repo" "$remote" "$url"; return; }
 
-  out=$(git -C "$repo" fetch -q origin "$branch" 2>&1) || { printf 'FAIL\t%s\tfetch %s: %s\n' "$repo" "$branch" "${out##*$'\n'}"; return; }
+  branch=$(git -C "$repo" symbolic-ref --short -q "refs/remotes/$remote/HEAD")
+  if [[ -z $branch ]]; then
+    git -C "$repo" remote set-head "$remote" --auto >/dev/null 2>&1
+    branch=$(git -C "$repo" symbolic-ref --short -q "refs/remotes/$remote/HEAD")
+  fi
+  branch=${branch#"$remote"/}
+  [[ -n $branch ]] || { printf 'FAIL\t%s\tcannot resolve default branch of %s\n' "$repo" "$remote"; return; }
+
+  out=$(git -C "$repo" fetch -q "$remote" "$branch" 2>&1) || { printf 'FAIL\t%s\tfetch %s: %s\n' "$repo" "$branch" "${out##*$'\n'}"; return; }
 
   before=$(git -C "$repo" rev-parse -q --verify "refs/heads/$branch")
-  [[ -n $before ]] || { printf 'NOLOCAL\t%s\t%s: no local branch, origin/%s fetched\n' "$repo" "$branch" "$branch"; return; }
+  [[ -n $before ]] || { printf 'NOLOCAL\t%s\t%s: no local branch, %s/%s fetched\n' "$repo" "$branch" "$remote" "$branch"; return; }
 
   current=$(git -C "$repo" symbolic-ref --short -q HEAD)
   if [[ $current == "$branch" ]]; then
-    out=$(git -C "$repo" merge -q --ff-only "origin/$branch" 2>&1)
+    out=$(git -C "$repo" merge -q --ff-only "$remote/$branch" 2>&1)
   else
-    out=$(git -C "$repo" fetch -q origin "$branch:$branch" 2>&1)
+    out=$(git -C "$repo" fetch -q "$remote" "$branch:$branch" 2>&1)
   fi
   [[ $? -eq 0 ]] || { printf 'FAIL\t%s\t%s: %s\n' "$repo" "$branch" "${out##*$'\n'}"; return; }
 

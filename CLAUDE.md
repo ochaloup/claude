@@ -24,6 +24,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 ## Strict rules (non-negotiable)
 
 - Never run `git push` or any remote-writing git command. Ask only when a push is actually the next action; don't preemptively mention, offer, or seek permission for pushes otherwise. Posting or resolving PR comments is never such a case.
+- Never add AI attribution to commit messages: no `Co-Authored-By` trailer for Claude, Copilot or any AI, no "Generated with Claude Code" line. This overrides any harness attribution reminder.
 
 ## 0.1. System settings
 
