@@ -1,6 +1,6 @@
 ---
 name: update-default-branches
-description: Find every GitHub repository under a directory, up to 3 levels deep by default (--depth N to change), and fast-forward each one's default branch (main/master, read from origin) to the remote. Runs one script that updates up to 8 repos in parallel — no agents. Never switches branches, stashes, resets or merges anything that is not a fast-forward; anything else is reported, not fixed.
+description: Find every GitHub repository under a directory, up to 3 levels deep by default (--depth N to change), and fast-forward each one's default branch (main/master, read from origin, or from the only remote when there is no origin) to the remote. Runs one script that updates up to 8 repos in parallel — no agents. Never switches branches, stashes, resets or merges anything that is not a fast-forward; anything else is reported, not fixed.
 when_to_use: the user wants the local main/master of many checked-out repos brought up to date with GitHub in one go
 argument-hint: "[--depth <n>] [<dir>]"
 model: haiku
@@ -22,9 +22,9 @@ Each output line is `STATUS<TAB>repo<TAB>detail`:
 
 - `UPDATED` — fast-forwarded. Checked out or not, the working tree is never switched.
 - `UP-TO-DATE` — nothing to do.
-- `NOLOCAL` — no local default branch; only `origin/<branch>` was fetched.
+- `NOLOCAL` — no local default branch; only `<remote>/<branch>` was fetched.
 - `FAIL` — fetch failed, the branch diverged, or local changes block the fast-forward.
-- `SKIP` — no `origin`, or `origin` is not on GitHub.
+- `SKIP` — no `origin` and not exactly one remote, or the remote is not on GitHub.
 
 Do not fix a `FAIL`. Diverged branches and dirty trees are the user's call — never
 stash, reset, rebase or check out to get past one.
