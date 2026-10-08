@@ -36,9 +36,8 @@ Run these in parallel where they are independent.
 1. **Repos and branch.** For each repo the task touches: `git rev-parse --show-toplevel`,
    `git branch --show-current`, `git status --short`, and the default branch
    (`git symbolic-ref --short refs/remotes/origin/HEAD`).
-2. **Notion GEN task.** Find and fetch it exactly as `code-review` does in its
-   "Task conformance" section, steps 1–3. Also accept a `GEN-<n>` named in the
-   conversation. No task → skip in one line.
+2. **Notion GEN task.** Invoke the `gen-task` skill. Its `Asks` become "done
+   means". `Task: none` → print its line and continue.
 3. **$K notes.** In the resolved path, `Glob` for `<DIR>--<BRANCH>--*` per repo,
    and for the topic: `*<gen-n>*` and 2–3 distinctive topic words
    (`*<word>*<word>*`). Read PLAN / INVESTIGATION / IMPLEMENTATION_DETAIL /
@@ -87,6 +86,10 @@ When plan-task returns open questions:
 
 Read the saved plan document. It is the spec from here on.
 
+If the advisor tool is available, consult it on the plan before branching: missed
+invariants, schema or API contracts, call sites the plan does not name. A point
+that changes the plan goes to the user before step 4.
+
 ## 4. Branch
 
 Per repo the plan touches:
@@ -117,6 +120,9 @@ Then for each plan step, in order:
    Message: imperative subject naming the change, prefixed `GEN-<n>: ` when a task
    exists. No AI trailer.
 6. Print one line: `Step <n>/<total> ✓ <subject> — <tests passing>`.
+
+When the same test or build error fails twice, consult the advisor (if available)
+before the third attempt: root cause, or a fix that only moves the symptom?
 
 A step that cannot pass cleanly stops the loop. Report where it stopped and why,
 and ask. Do not skip ahead.
@@ -184,6 +190,10 @@ to the GEN asks when a task exists. Never pass `apply` on this first call.
   follow-ups.
 
 ## 11. Report
+
+If the advisor tool is available, consult it on the full diff first: hidden
+regressions, broken CLAUDE.md rules. A regression it finds stops the run — report
+it and ask. Anything else it raises goes to the follow-ups.
 
 Print in this order:
 

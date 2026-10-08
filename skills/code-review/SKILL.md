@@ -188,26 +188,18 @@ The other engines ask whether the code is correct. This asks whether it is the c
 the task asked for. Cheap — one Notion fetch — so it runs on every invocation that
 finds a task.
 
-1. **Find the task id.** Run `gh pr view --json url,number,title,body,baseRefName`
-   right after resolving the base ref; keep the result for Reporting. Look for
-   `GEN-<number>` in the PR title, then the PR body, then the branch name, and for a
-   `notion.so` link in the body. No PR and no id in the branch name → skip, one line.
-2. **Fetch it.** Load the Notion tools with `ToolSearch` (`notion-search notion-fetch`).
-   A `notion.so` link → `notion-fetch` it. Otherwise `notion-search` for
-   `GEN-<number>`, keep only the hit whose id property is exactly that, and fetch it.
-   Notion unavailable, or no exact hit → say so in one line and skip. Never review
-   against a guessed task.
-3. **Extract the asks.** From the page, list each requirement and acceptance
-   criterion as a numbered item, quoted or tightly paraphrased. A vague task gives a
-   short list; do not invent criteria to fill it.
-4. **Judge against the whole PR**, not the `--base` slice: `git diff
+1. **Get the task.** Run `gh pr view --json url,number,title,body,baseRefName`
+   right after resolving the base ref; keep the result for Reporting. Then invoke
+   the `gen-task` skill. `Task: none` → print its line and skip this section.
+   Otherwise its numbered `Asks` are the list judged below.
+2. **Judge against the whole PR**, not the `--base` slice: `git diff
    origin/<baseRefName>...HEAD` (or the base ref when there is no PR). A scoped run
    from pr-review-followup would otherwise report done work as missing. Each ask gets:
    - **MET** — cite the `file:line` that does it.
    - **PARTIAL** — what is done, what is missing.
    - **MISSING** — nothing in the diff does it.
    - **DIVERGENT** — the diff does it differently from what the task says.
-5. **Then the reverse direction:** changes in the diff that no ask explains. Flag
+3. **Then the reverse direction:** changes in the diff that no ask explains. Flag
    only behaviour changes — not refactors or tests serving an ask.
 
 PARTIAL, MISSING and DIVERGENT asks become findings, priority by the ask's weight

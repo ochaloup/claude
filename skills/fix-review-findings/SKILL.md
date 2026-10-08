@@ -144,7 +144,35 @@ Verify **inline**, in this context — the report and most of the files are
 already here, and a subagent would read them from cold. Only when more than 8
 findings are selected, delegate to at most 4 parallel verifiers.
 
-Print one verdict line per finding before planning.
+### Fable second check
+
+A `REFUTED` or `PLAUSIBLE` verdict gets a second opinion from a different model.
+`CONFIRMED` and `ALREADY_FIXED` do not.
+
+Per such finding, one `general-purpose` Agent with `model: "fable"`, at most 4 in
+parallel. Keep its context small and independent — the prompt carries only:
+
+```
+Verify one code-review finding at current HEAD in <repo path>.
+Claim: <one-line finding>
+Failure scenario: <scenario from the report>
+Location: <file> — <symbol>
+Read only that code, its call sites and its upstream guards. Do not review anything else.
+Return: CONFIRMED | PLAUSIBLE | REFUTED, then at most 5 lines of evidence with file:symbol.
+```
+
+Never pass the review text, your own verdict or your evidence — the point is an
+unanchored read.
+
+- **Same verdict** → keep it.
+- **Different verdict** → the finding is `DISPUTED`. Print both evidences, ask the
+  user, and continue with the rest.
+- **The Agent call fails** (no Fable access, credits, consent, any error) → keep
+  your own verdict, note `Fable check skipped: <reason>` once, and go on. Never
+  retry on another model.
+
+Print one verdict line per finding before planning, with the Fable result when one
+ran.
 
 ## 4. Plan
 

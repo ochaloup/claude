@@ -137,8 +137,8 @@ Sources, in order of authority:
   `<DIR>--<BRANCH>--*.md` (`PLAN`, `IMPLEMENTATION_DETAIL`, `INVESTIGATION`,
   `REVIEW`). Never use `$SAVE_PLAN_PATH` inside a bash command; use `Glob`/`Read`
   with the resolved literal.
-- **The ticket** — if the branch or PR title carries `[GEN-<number>]` and Notion
-  is reachable, read the task description.
+- **The ticket** — invoke the `gen-task` skill and take its `Asks`. `Task: none`
+  → skip this source.
 - **`--criteria <text|file>`** — acceptance criteria passed in directly.
 - **The branch's own tests** — the executable part of the contract, and the part
   that survives when the prose is vague.
