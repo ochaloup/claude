@@ -1,13 +1,19 @@
 ---
 name: gen-task
-description: Find the Notion GEN task linked to the current work and return its requirements as a fixed block — id, URL, title, status, numbered asks. Looks for the id in the argument, the conversation, the branch name, the PR title and body, or a notion.so link. Exact id match only, never a guessed task. Judges nothing; the caller decides what to do with the asks.
+description: Find the Notion GEN task linked to the current work and return its requirements as a fixed block — id, URL, title, status, numbered asks. Runs forked on Sonnet. Looks for the id in the argument, the branch name, the PR title and body, or a notion.so link. Exact id match only, never a guessed task. Judges nothing; the caller decides what to do with the asks.
 when_to_use: a skill or the user needs the requirements of the GEN task behind a branch or PR — code-review task conformance, implement context, pre-pr-design-pass contract. To create a new task use maintenance-task.
 argument-hint: "[GEN-<n> | <notion.so url>]"
+context: fork
+agent: general-purpose
+model: sonnet
 ---
 
 # GEN task lookup
 
 Arguments: $ARGUMENTS
+
+This runs forked on Sonnet and cannot see the caller's conversation, so a caller
+that knows the id passes it as the argument.
 
 One plain command per bash call. No pipes, `;`, `&&`, redirects or `$(...)`.
 
@@ -16,9 +22,8 @@ One plain command per bash call. No pipes, `;`, `&&`, redirects or `$(...)`.
 Take the first hit, in this order:
 
 1. The argument — `GEN-<n>` or a `notion.so` link.
-2. A `GEN-<n>` or `notion.so` link the user named in the conversation.
-3. The branch name — `git branch --show-current`.
-4. The PR — `gh pr view --json title,body`: title, then body, then a `notion.so`
+2. The branch name — `git branch --show-current`.
+3. The PR — `gh pr view --json title,body`: title, then body, then a `notion.so`
    link in the body. No PR → skip this source silently.
 
 Match the id case-insensitively, with or without brackets: `GEN-9202`, `gen-9202`,

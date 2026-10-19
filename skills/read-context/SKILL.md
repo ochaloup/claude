@@ -60,6 +60,7 @@ A repo doc or memory that contradicts the code is stale. Report it as a finding;
 ## 4. GEN task
 
 Invoke the `gen-task` skill, passing an id when the argument, a doc or the PR title names one.
+It runs forked, so wait for its result.
 It returns an exact match or a no-task line. One GEN id can be an umbrella shared by many
 unrelated tasks; if no task fits this work, say so in one line and move on.
 

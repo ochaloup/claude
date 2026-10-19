@@ -36,7 +36,8 @@ Run these in parallel where they are independent.
 1. **Repos and branch.** For each repo the task touches: `git rev-parse --show-toplevel`,
    `git branch --show-current`, `git status --short`, and the default branch
    (`git symbolic-ref --short refs/remotes/origin/HEAD`).
-2. **Notion GEN task.** Invoke the `gen-task` skill. Its `Asks` become "done
+2. **Notion GEN task.** Invoke the `gen-task` skill, passing any `GEN-<n>` or `notion.so`
+   link already known; it runs forked, so wait for its result. Its `Asks` become "done
    means". `Task: none` → print its line and continue.
 3. **$K notes.** In the resolved path, `Glob` for `<DIR>--<BRANCH>--*` per repo,
    and for the topic: `*<gen-n>*` and 2–3 distinctive topic words
@@ -61,8 +62,17 @@ readings; anything the conversation left undecided.
 
 ## 3. Plan through plan-task
 
-Invoke the `plan-task` skill. Its argument is a self-contained brief, because it
-plans from that brief:
+Run `plan-task` in a fresh agent, never through `Skill` here: a `Skill` call keeps
+this session's model and its whole context, so the plan would not run on Fable.
+
+```
+Agent({ subagent_type: "general-purpose",
+        model: "fable",
+        description: "plan-task",
+        prompt: "Invoke the plan-task skill with the brief below as its argument. Do not return before the codex run has finished or failed. Return the skill's Output section verbatim.\n\n<brief>" })
+```
+
+The brief is self-contained, because the agent sees nothing else:
 
 ```
 Detailed IMPLEMENTATION plan required — not a design sketch. Every step must
@@ -76,11 +86,14 @@ Constraints: <constraints from conversation and notes>
 Context docs: <absolute paths of $K notes and the GEN task URL>
 ```
 
+Print the agent's reply as it came back; the user sees nothing of it otherwise.
+
 When plan-task returns open questions:
 
 1. Answer from the gathered context any that it already settles. Say which and why.
 2. Ask the user the rest, numbered as plan-task numbered them. Stop and wait.
-3. Invoke `plan-task` with `finalize`.
+3. Run a new agent the same way, with the argument
+   `finalize <plan doc absolute path>` followed by every answer as `Q<n> — <answer>`.
 4. Repeat until the plan says `Status: RESOLVED`. Non-blocking questions left open
    are carried to the final report.
 

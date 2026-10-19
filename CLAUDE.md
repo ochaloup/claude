@@ -33,7 +33,8 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 - Comments:
   - ZERO by default. At most 1 short line, ONLY when the WHY is not derivable from names, types, or surrounding code. Comments carry rationale/design/context — never restate WHAT the code does.
   - Redundancy test (delete if it fails): a comment is banned if its content is already visible in adjacent code, INCLUDING a log/error message on a neighboring line. Restating or paraphrasing a warn!/error!/log message in a comment above it is the canonical bug. Good: a non-obvious invariant or a cross-module assumption. Bad: anything a reader sees in the next 1-2 lines.
-  - Never multi-line, in ANY syntax: no ///, no /** */, no stacked //, no stacked # (YAML, TOML, shell, Python, Dockerfile). One comment = one line, ≤100 chars. A second consecutive comment line is a bug — fix it.
+  - Never multi-line, in ANY syntax: no ///, no stacked //, no stacked # (YAML, TOML, shell, Python, Dockerfile). One comment = one line, ≤100 chars. A second consecutive comment line is a bug — fix it.
+  - Exception: JSDoc `/** */` on exported API is permitted and fine. Keep it short: a summary sentence plus `@param`/`@returns`/`@throws` lines, no long explanatory prose. Match the file's existing JSDoc style.
   - If the WHY needs more than one line, the file is the wrong place. It goes in the commit message or PR body. Write the one line that names the constraint, drop the rest.
   - Never put a source line number in a comment (e.g. // see line 200, // as in L42). Diff-gutter numbers like `255 +` are NOT part of the code and must never end up in a comment. Pointing to a file and/or function name is fine.
   - Never put tickets numbers, code number lines into comments
@@ -48,6 +49,9 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 - Exception: bulk or multi-step work may go in a script in the scratchpad, run as one `bash <script>` call.
 - Reason: multi-command strings don't match the project's permission allow-list patterns
   and will trigger interactive permission prompts.
+- Every turn re-reads the whole session, so turns are the cost. Independent commands go out together as
+  parallel Bash calls in one response, never one per turn. A chain of dependent read-only lookups goes in
+  one `python3 -c` probe (subprocess calls, labeled output) or one scratchpad script.
 
 ### 0.22. Report blockers
 

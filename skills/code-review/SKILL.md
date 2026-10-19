@@ -132,6 +132,7 @@ Kick it off right after resolving the base ref, alongside the codex call:
 
 ```
 Agent({ subagent_type: "Explore",
+        model: "sonnet",
         description: "Describe branch changes",
         prompt: "Run `git diff --stat <BASE_REF>`, then `git diff <BASE_REF>`. Say what
                  the change does, in plain english. Return one lead sentence, then 3-6
@@ -190,7 +191,8 @@ finds a task.
 
 1. **Get the task.** Run `gh pr view --json url,number,title,body,baseRefName`
    right after resolving the base ref; keep the result for Reporting. Then invoke
-   the `gen-task` skill. `Task: none` → print its line and skip this section.
+   the `gen-task` skill, passing any `GEN-<n>` or `notion.so` link already known; it
+   runs forked, so wait for its result. `Task: none` → print its line and skip this section.
    Otherwise its numbered `Asks` are the list judged below.
 2. **Judge against the whole PR**, not the `--base` slice: `git diff
    origin/<baseRefName>...HEAD` (or the base ref when there is no PR). A scoped run
@@ -575,9 +577,11 @@ The chapter body is ordered as:
    finding ID. Then the unexplained changes. When skipped, one line saying why.
 3. **Carried-forward prior findings** (if any) — STILL_PRESENT / UNCERTAIN entries
    from prior rounds, original IDs preserved.
-4. **Raw codex review** — codex's findings verbatim, so the reader can audit
-   independently. Drop only its reasoning preamble and progress chatter; never edit,
-   merge or summarise a finding itself.
+4. **Codex findings** — one line per codex finding, so the reader can audit what
+   was done with each: `file:line` — the claim in ≤ 120 chars — `adopted as <ID>` |
+   `duplicate of <ID>` | `dropped: <reason>`. Never paste codex's output verbatim;
+   saved reviews are re-read by later sessions, and raw output is what made them
+   hundreds of KB.
 
 Do **not** paste the deep engine's or the topology engine's raw output into
 the report — they are long and re-inflate context for little value. Instead, for

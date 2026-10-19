@@ -38,7 +38,7 @@ So: **you do not explore. Agents explore for you.**
 
 ## Stage detection
 
-- Argument is `finalize` → **Stage 2**.
+- Argument starts with `finalize` → **Stage 2**.
 - Anything else → **Stage 1**, and the argument is the task.
 
 If Stage 1 runs with no argument, take the task from the conversation. If the
@@ -138,7 +138,8 @@ document refer back to.
 
 ## Stage 2 — Finalize
 
-The answers are in the conversation. For each question:
+The answers are in the argument after `finalize`, or else in the conversation. When the
+argument names a plan document, read it first — a fresh agent has no other copy. For each question:
 
 1. Record the answer against its number.
 2. Change the plan to match. An answer that contradicted the assumption means
