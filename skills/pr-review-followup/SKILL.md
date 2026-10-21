@@ -358,8 +358,7 @@ directly. Every finding must include the full clickable GitHub permalink.
 ## 9. Final summary table (last output)
 
 After `save-plan` reports the saved file path, print a single table to the
-chat as the **last** output. No prose after it except the
-question in step 10.
+chat. No prose after it except the question and PR line in step 10.
 
 Include, in this order:
 1. Every carried-forward prior finding still unaddressed (Section D), in
@@ -404,4 +403,4 @@ Above that, print the absolute saved-file path from step 8 on its own line.
 ## 10. Ask for next action
 
 STOP. Do not apply any changes. Ask the user which IDs to act on and which to
-decline.
+decline. End with `PR: <PR_URL>` on its own line, as the last output.

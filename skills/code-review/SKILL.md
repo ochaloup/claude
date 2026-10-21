@@ -544,7 +544,8 @@ After `save-plan` reports the saved file path, print, in this order and nothing 
 2. The agent's design-impact block, verbatim.
 3. The agent's diagram block, or its `Diagram: none` line, verbatim.
 4. The absolute saved-file path from step 2, on its own line.
-5. The table, as the **last** output. No prose after it.
+5. The table. No prose after it.
+6. If a PR exists, `PR: <full PR URL>` on its own line, as the **last** output.
 
 The table rows, in this order:
 1. Every carried-forward prior finding still unaddressed (STILL_PRESENT /

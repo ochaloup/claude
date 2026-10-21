@@ -2,3 +2,4 @@ settings.json
 settings.json.*
 synced/
 .trash
+__pycache__/

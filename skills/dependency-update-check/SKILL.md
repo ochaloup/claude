@@ -1,6 +1,6 @@
 ---
 name: dependency-update-check
-description: Verifies a dependency version bump won't break the service before it merges — resolves exactly which packages changed and by how much, installs the new versions, builds/typechecks, starts the service locally to confirm it boots and stays healthy, runs the test suite when that's reasonable, and researches each meaningfully-bumped package's changelog (web retrieval + prior knowledge) for breaking changes the codebase actually exercises. Ends with a SAFE/RISKY/UNSAFE verdict.
+description: Verifies a dependency version bump won't break the service before it merges — resolves exactly which packages changed and by how much, installs the new versions, builds/typechecks, starts the service locally to confirm it boots and stays healthy, runs the test suite when that's reasonable, and researches each meaningfully-bumped package's changelog (web retrieval + prior knowledge) for breaking changes the codebase actually exercises, and checks each new version's supply-chain trust (GitHub advisories incl. malware, release age, publisher change, new install scripts). Ends with a SAFE/RISKY/UNSAFE verdict.
 when_to_use: before merging a manual pnpm/cargo/pip update or a Renovate/Dependabot PR, when "CI is green" isn't enough assurance that the new versions won't crash the service
 model: sonnet
 argument-hint: "[--repo <name|owner/repo|path>] [--branch <branch>|<package>[@<version>]|<PR#>|<PR-url>|--base <ref>|(none = uncommitted manifest changes, else branch vs base)]"
@@ -81,6 +81,11 @@ Detect from the manifest files present:
 | Cargo | `Cargo.toml` | `Cargo.lock` | `cargo fetch` | `cargo check` / `cargo build` | `cargo test` |
 | pip/poetry | `pyproject.toml` / `requirements*.txt` | `poetry.lock` | `poetry install` / `pip install -r` | — | `pytest` |
 | Go | `go.mod` | `go.sum` | `go mod download` | `go build ./...` | `go test ./...` |
+| GitHub Actions | `.github/workflows/*.yml`, `action.yml` | — | — | — | the PR's own CI run (8a) |
+| Docker image | `Dockerfile` | — | — | `docker build` if Docker/Podman is available | the PR's own CI run (8a) |
+
+Actions and Docker bumps have no local install, boot or test step. Mark steps 4-6
+N/A for them and rely on CI, the research in step 7 and the supply-chain check in 7b.
 
 If the repo is a workspace/monorepo (`pnpm-workspace.yaml`, Cargo workspace
 members, `go.work`), scope everything below to only the workspace package(s)
@@ -100,7 +105,8 @@ manifest or only moved in the lockfile (transitive).
 Table every **direct** dependency change individually. Collapse transitive-only,
 patch-level bumps into a single summary line ("N transitive deps, patch-level
 only") — they're not worth a row each, and step 7 skips deep research on them
-unless something later traces a failure back to one.
+unless something later traces a failure back to one. List packages the lockfile
+gains or drops separately, with their versions — step 7b checks every added one.
 
 Never read a large lockfile diff in the main context, and never read it twice.
 Hand it to one `general-purpose` agent with `model: haiku`. It reads the diff once
@@ -202,6 +208,43 @@ packages, do it inline. Each research pass must:
 3. Record a verdict — **safe** / **caution** / **breaking** — with the evidence
    (quote or link) that justifies it.
 
+## 7b. Supply-chain check
+
+Step 7 asks whether the new version breaks the code. This step asks whether the
+new version can be trusted. A malicious release usually compiles and passes tests,
+so steps 4-6 never catch it.
+
+**Advisories** — for every changed and added package, direct and transitive.
+Batch per ecosystem (`npm`, `rust`, `pip`, `go`, `actions`), comma-separated:
+
+```
+gh api -X GET /advisories -f ecosystem=npm -f affects=<pkg>@<to>,<pkg>@<to>
+gh api -X GET /advisories -f ecosystem=npm -f type=malware -f affects=<pkg>@<to>,<pkg>@<to>
+```
+
+The default `type` is `reviewed` only, so malware needs its own call. Then check
+the from-versions the same way. Record, per hit, the GHSA id and whether it
+affects the from-version, the to-version, or both.
+
+**Release trust** — for direct packages and packages added to the lockfile. Cap
+at ~15 and name what was left out:
+
+| Ecosystem | Release date, publisher | Install-time code |
+|---|---|---|
+| npm | `npm view <pkg>@<ver> time _npmUser dist.attestations --json` | `scripts.preinstall/install/postinstall` in `npm view <pkg>@<ver> scripts --json` |
+| Cargo | `curl -s https://crates.io/api/v1/crates/<name>/<ver>` (`created_at`, `published_by`) | `build.rs` under `~/.cargo/registry/src/*/<name>-<ver>/` after `cargo fetch` |
+| pip | `curl -s https://pypi.org/pypi/<name>/<ver>/json` (`upload_time`) | sdist only, no wheel (runs `setup.py`) |
+| Actions | `gh api repos/<owner>/<repo>/releases/tags/<tag>` (`published_at`, `author`) | — |
+
+Compare each to-version against its from-version. Flag any of these:
+
+- the to-version was published less than 3 days ago
+- the publisher differs from the from-version's, or npm provenance (`dist.attestations`) is gone
+- install-time code that the from-version did not have
+- an Actions ref that moved from a SHA pin to a tag
+
+If a lookup fails, say so — never report an unchecked package as clean.
+
 ## 8. Verdict and report
 
 ### 8a. Close the gaps before reporting
@@ -255,6 +298,10 @@ Scope: <ecosystem> · <package manager> · <N> package(s) changed (<M> direct, <
 - Source: <URL, retrieved> or "prior knowledge only — retrieval failed/unavailable"
 (repeat per researched package; list skipped-from-research packages in one line)
 
+### Supply chain — CLEAN / FLAGGED / PARTIAL (lookups failed)
+- Advisories: fixed by this bump <GHSA ids> · introduced <GHSA ids> · malware <none / ids>
+- Release trust: <each flag with package and evidence, or "no flags">
+
 ### Overall verdict: SAFE / SAFE WITH CAVEATS / RISKY / UNSAFE
 <one paragraph rationale>
 
@@ -267,17 +314,21 @@ Scope: <ecosystem> · <package manager> · <N> package(s) changed (<M> direct, <
 
 Verdict rules:
 
-- **UNSAFE** — build/typecheck failed, the service crashed on boot, or a
+- **UNSAFE** — build/typecheck failed, the service crashed on boot, a
   researched package has a confirmed breaking change this codebase actually
-  exercises.
+  exercises, a to-version has a malware advisory, or the bump introduces an
+  advisory the from-version did not have.
 - **RISKY** — everything ran, but a package landed in "caution" (ambiguous
   exposure, or research fell back to pretrained knowledge for a release past the
-  cutoff), or tests were skipped for a change touching a package with real usage.
+  cutoff), tests were skipped for a change touching a package with real usage,
+  or 7b raised a release-trust flag. A flag for a release under 3 days old
+  means "wait and re-check", not "reject".
 - **SAFE WITH CAVEATS** — install/build/tests/research all clean, but startup or
   tests couldn't be verified locally or in CI after 8a — name the gap so it's
   covered elsewhere (staging) before merge.
 - **SAFE** — install, build, startup, and tests all passed (locally, or in CI as
-  confirmed in 8a), and every meaningfully-bumped package researched clean.
+  confirmed in 8a), every meaningfully-bumped package researched clean, and 7b
+  is CLEAN.
 
 ## 9. Persisting
 
