@@ -168,5 +168,15 @@ Informative and really concise, both at once.
 
 ## After creating
 
-Print the created task URL and nothing else — no summary, no restatement of the
-body.
+`notion-fetch` the created page and read its `Task ID` property — the
+auto-incremented `GEN-<n>`. Never guess or derive it from another task.
+
+Print exactly one line and nothing else — no summary, no restatement of the
+body:
+
+```
+GEN-<n> <task URL>
+```
+
+If the fetch fails or `Task ID` is empty, print `GEN-? <task URL>` and say why in
+one line.
