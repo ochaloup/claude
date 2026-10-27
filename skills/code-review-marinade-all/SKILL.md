@@ -1,24 +1,29 @@
 ---
 name: code-review-marinade-all
-description: Find every open marinade-finance PR awaiting my review, prepare each repo under ~/marinade (clone, update the default branch, force-reset the PR branch), and open one yakuake tab per PR with a tmux session running claude-work — /code-review --deep for a first review, this skill's --followup mode for a re-requested one. Skip-list repos, drafts, PRs I reacted to with 👀, docs-only PRs and PRs waiting for the author are listed, not reviewed. Ends with two tables, launched and not reviewed. Never posts new review comments; the followup mode only replies to and resolves my own threads the author addressed.
-when_to_use: the user wants all pending marinade-finance review requests set up for review in one go; the user still reads each result and posts with post-review-comments
+description: Find every open marinade-finance PR awaiting my review, prepare each repo under ~/marinade (clone, update the default branch, force-reset the PR branch), and open one yakuake tab per PR with a tmux session running the Claude command (--claude, default the current session's subscription) — this skill's --first mode for a first review, its --followup mode for a re-requested one. Skip-list repos, drafts, PRs I reacted to with 👀, docs-only PRs and PRs waiting for the author are listed, not reviewed. Ends with two tables, launched and not reviewed. The first mode reviews, gates each finding through a fresh agent and parks the survivors in a pending review only I can see; the followup mode replies to and resolves my own threads the author addressed or declined for a reason that holds. Nothing is ever submitted.
+when_to_use: the user wants all pending marinade-finance review requests set up for review in one go; the user still reads each result, edits the pending review and submits it
 model: sonnet
-argument-hint: "[--dry-run] | --followup <pr-url>"
+argument-hint: "[--dry-run] [--claude <cmd>] | --first <pr-url> [--retro <pr-url>] | --followup <pr-url>"
 ---
 
 # Code review — all marinade PRs
 
 Arguments: $ARGUMENTS
 
-With `--followup <pr-url>` go to **Followup mode**. Otherwise run the launcher.
+With `--first <pr-url>` go to **First mode**, with `--followup <pr-url>` to
+**Followup mode**. Otherwise run the launcher.
 
 ## Launcher
 
-Run as one bash call, passing `--dry-run` through when given:
+Run as one bash call, passing `--dry-run` and `--claude <cmd>` through when given:
 
 ```
-python3 ~/.claude/skills/code-review-marinade-all/review_all.py [--dry-run]
+python3 ~/.claude/skills/code-review-marinade-all/review_all.py [--dry-run] [--claude <cmd>]
 ```
+
+`--claude` is the shell command typed into each tab's `claude` window, e.g. `claude-work`
+or `CLAUDE_CONFIG_DIR=~/.claude-x claude`. Quote it as one argument. Default: the current
+session's subscription, i.e. `claude` with this session's `CLAUDE_CONFIG_DIR` when set.
 
 It prints a JSON list, one row per PR found by
 `review-requested:@me org:marinade-finance`. `status` is one of:
@@ -55,27 +60,87 @@ Not reviewed (`NOT-REVIEWED`, `FAILED`):
 A `WARN` in a launched row's detail (default branch not fast-forwarded) goes
 into its Mode cell. Nothing after the tables.
 
+## First mode
+
+Runs inside a launched tab for a PR I have not reviewed yet.
+
+0. **Checkout check.** Run `gh pr view <pr-url> --json headRefOid` and `git rev-parse HEAD`
+   as two calls. Not a git repo, or the two differ → stop with one line:
+   `Checkout is not the PR head (<HEAD> vs <headRefOid>) — run the launcher, or gh pr checkout <n> in the repo.`
+   Never fetch, reset or check out to get past it. The same check opens Followup mode.
+1. Invoke the `code-review` skill with `--deep --summary`. Run it through its final
+   table, then continue to step 2 in the same turn.
+2. **Gate.** The review decided which findings are real; this re-checks which are
+   worth a comment, from a cold context that never saw the review's reasoning. Write
+   the findings to `<scratch>/gate-input.md` with the Write tool, one block each: ID,
+   `file:line`, the claim, the failure scenario, the recommendation. Add the `skip:`
+   lines from the lessons files code-review loaded. Then:
+   ```
+   Agent({ subagent_type: "general-purpose", model: "sonnet",
+           description: "Gate review findings",
+           prompt: "Read-only: no edits, no git state changes, no GitHub writes. Every bash
+                    call is one plain command. Read <scratch>/gate-input.md. The repo is
+                    <cwd>, the PR diff is `git diff <BASE_REF>`. For each finding read the
+                    code at HEAD and rule: POST — the defect is real, a caller can reach
+                    it, and a reviewer would want the comment; DROP — refuted, pure style,
+                    outside what this PR touches or reaches, or matching a skip line; ASK
+                    — real, but a design or product call the human must make. At most
+                    three P3 findings get POST. Return only one line per finding:
+                    `<ID> | POST|DROP|ASK | <file:line> | <one-sentence reason>`." })
+   ```
+   Gate unavailable or errored → post nothing, say so first, go to step 4.
+3. Invoke `post-review-comments` with the POST IDs, comma-joined, and the PR URL.
+   No POST rows → skip it in one line.
+4. Invoke `review-lesson` with the PR URL, plus `--retro <url>` when this mode was
+   given one. The DROP rows the gate matched to no skip line are its wrong-flag
+   candidates.
+5. Print the gate's lines as a table — `ID | Gate | Reason` — then the pending review
+   line from step 3, then `PR: <PR URL>` as the last line, and stop. ASK rows stay
+   off GitHub; posting one is the user's `post-review-comments` run.
+
 ## Followup mode
 
 Runs inside a launched tab for a PR I already reviewed and was re-requested on.
 
-1. Invoke the `pr-review-followup` skill with the PR URL. Run it through its
+1. Run the checkout check from First mode, step 0. Then invoke the `pr-review-followup`
+   skill with the PR URL. Run it through its
    final table. Its closing STOP is about code changes; continue to step 2 in the
    same turn.
-2. From its Section A, select items that are all of: `[MY_THREAD]`,
-   `[INLINE-THREAD]`, unresolved, status `FIXED` or `ADDRESSED_IN_DISCUSSION`.
-   Nothing else is touched — not others' threads, not review-body or issue items,
-   not `PRESENT`, `UNCERTAIN` or `OUTDATED`.
+2. From its Section A, take items that are all of: `[MY_THREAD]`, `[INLINE-THREAD]`,
+   unresolved. Of those, select:
+   - `FIXED` — resolve.
+   - `ADDRESSED_IN_DISCUSSION`, and `PRESENT` where the author replied declining —
+     send to the gate below; resolve only what it ACCEPTs.
+
+   Nothing else is touched — not others' threads, not review-body or issue items, not
+   `UNCERTAIN` or `OUTDATED`, not a `PRESENT` thread with no author reply.
+
+   **Decline gate.** Write each declined thread to `<scratch>/decline-input.md` with
+   the Write tool: my original comment, the author's reply verbatim, `file:line`. Then:
+   ```
+   Agent({ subagent_type: "general-purpose", model: "sonnet",
+           description: "Gate declined threads",
+           prompt: "Read-only: no edits, no git state changes, no GitHub writes. Every bash
+                    call is one plain command. Read <scratch>/decline-input.md. The repo
+                    is <cwd> at the PR head. For each thread read the code and rule:
+                    ACCEPT — the author's reason holds against the code; REJECT — it does
+                    not, or it defers a real defect with no follow-up. Return only one line
+                    per thread: `<ID> | ACCEPT|REJECT | <one-sentence reason>`." })
+   ```
+   Gate unavailable or errored → resolve only the `FIXED` ones and say so first.
 3. Fetch the thread ids with the GraphQL query from the `answer-existing-review`
    skill, step 2. Write the batch JSON with the Write tool, in that skill's
    step 6 format, `resolve: true` on every entry. One reply per thread,
    1 sentence, prefixed `🤖 claude:`, naming the decisive fact:
    `🤖 claude: Resolved — the query now filters on the requested epochs in fetch_flat_validators.`
-   For `ADDRESSED_IN_DISCUSSION`: `🤖 claude: Resolved — agreed with the explanation above, <one reason>.`
+   For an ACCEPTed decline: `🤖 claude: Resolved — agreed with the explanation above, <the gate's reason>.`
 4. Post and resolve:
    ```
    python3 -c 'import os;exec(open(os.path.expanduser("~/.claude/scripts/gh_reply_threads.py")).read())' <scratch>/replies.json
    ```
-5. Under the followup table print one line per thread, `<ID> | resolved | <reply URL>`,
-   then `PR: <PR URL>` as the last line, and stop. New findings stay in the
-   report — posting them is the user's `post-review-comments` run.
+5. Invoke `review-lesson` with the PR URL. ACCEPTed declines are its wrong-flag
+   candidates, `pre-existing` findings its earlier-round misses.
+6. Under the followup table print one line per thread, `<ID> | resolved | <reply URL>`,
+   then one per REJECTed decline, `<ID> | left open | <the gate's reason>`, then
+   `PR: <PR URL>` as the last line, and stop. New findings stay in the report —
+   posting them is the user's `post-review-comments` run.

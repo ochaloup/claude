@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+import argparse
+import datetime
 import json
 import os
+import re
+import shlex
 import subprocess
-import sys
 
 ORG = "marinade-finance"
 REMOTE = "marinade"
@@ -11,6 +14,8 @@ WORKTREES = os.path.join(ROOT, ".review-worktrees")
 SKIP_REPOS = {r.strip() for r in os.environ.get("MARINADE_ALL_SKIP_REPOS", "").split(",") if r.strip()}
 DOC_EXTS = (".md", ".mdx", ".txt", ".rst", ".adoc", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
 DOC_DIRS = ("docs/", "doc/")
+LOCKS = {"Cargo.lock", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", ".release-please-manifest.json"}
+RETRO_DAYS = 30
 
 os.environ["GIT_TERMINAL_PROMPT"] = "0"
 
@@ -33,6 +38,22 @@ def git(repo, *args, check=True):
 
 def is_doc(path):
     return path.lower().endswith(DOC_EXTS) or path.startswith(DOC_DIRS) or "/docs/" in path
+
+
+def find_retro(name, title, files):
+    if not re.match(r"fix\b", title, re.I):
+        return None
+    touched = {f["path"] for f in files if not is_doc(f["path"]) and os.path.basename(f["path"]) not in LOCKS}
+    if not touched:
+        return None
+    since = (datetime.date.today() - datetime.timedelta(days=RETRO_DAYS)).isoformat()
+    prior = json.loads(run(["gh", "pr", "list", "--repo", "%s/%s" % (ORG, name), "--state", "merged",
+                            "--search", "reviewed-by:@me merged:>=" + since, "--limit", "20",
+                            "--json", "url,mergedAt,files"]).stdout)
+    for p in sorted(prior, key=lambda p: p["mergedAt"], reverse=True):
+        if touched & {f["path"] for f in p["files"]}:
+            return p["url"]
+    return None
 
 
 def tmux_sessions():
@@ -106,10 +127,10 @@ def prepare(pr, main_dir, workdir):
     return local, warn
 
 
-def launch(session, workdir, prompt, title):
+def launch(session, workdir, claude, prompt, title):
     run(["tmux", "new-session", "-d", "-s", session, "-n", "claude", "-c", workdir])
     run(["tmux", "new-window", "-d", "-t", session, "-n", "bash", "-c", workdir])
-    run(["tmux", "send-keys", "-t", session + ":claude", "claude-work '%s'" % prompt, "Enter"])
+    run(["tmux", "send-keys", "-t", session + ":claude", "%s '%s'" % (claude, prompt), "Enter"])
     sid = run(["qdbus6", "org.kde.yakuake", "/yakuake/sessions", "addSession"]).stdout.strip()
     tid = run(["qdbus6", "org.kde.yakuake", "/yakuake/sessions", "terminalIdsForSessionId", sid]).stdout.strip().split(",")[0]
     run(["qdbus6", "org.kde.yakuake", "/yakuake/tabs", "setTabTitle", sid, title])
@@ -117,7 +138,14 @@ def launch(session, workdir, prompt, title):
 
 
 def main():
-    dry = "--dry-run" in sys.argv[1:]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--claude", help="shell command that starts Claude in each tab")
+    args = ap.parse_args()
+    if not args.claude:
+        conf = os.environ.get("CLAUDE_CONFIG_DIR")
+        args.claude = "CLAUDE_CONFIG_DIR=%s claude" % shlex.quote(conf) if conf else "claude"
+    dry = args.dry_run
     me = run(["gh", "api", "user", "--jq", ".login"]).stdout.strip()
     found = json.loads(run(["gh", "search", "prs", "--review-requested=@me", "--owner=" + ORG, "--state=open",
                             "--sort=updated", "--json", "repository,number,title,isDraft,url", "--limit", "100"]).stdout)
@@ -161,14 +189,19 @@ def main():
             workdir = os.path.join(WORKTREES, "%s-%d" % (name, number)) if busy else main_dir
             used.add(name)
             row["dir"] = workdir
+            retro = None if reviewed else find_retro(name, item["title"], view["files"])
+            mode = "followup" if reviewed else "first" + (" retro " + retro if retro else "")
             if dry:
-                row.update(status="READY", detail="followup" if reviewed else "review --deep")
+                row.update(status="READY", detail=mode)
                 continue
             local, warn = prepare(pr, main_dir, workdir)
-            prompt = "/code-review-marinade-all --followup " + item["url"] if reviewed else "/code-review --deep"
-            launch(session, workdir, prompt, row["pr"])
+            if reviewed:
+                prompt = "/code-review-marinade-all --followup " + item["url"]
+            else:
+                prompt = "/code-review-marinade-all --first " + item["url"] + (" --retro " + retro if retro else "")
+            launch(session, workdir, args.claude, prompt, row["pr"])
             row.update(status="LAUNCHED", detail="%s on %s, tmux %s%s" % (
-                "followup" if reviewed else "review --deep", local, session, "; WARN " + warn if warn else ""))
+                mode, local, session, "; WARN " + warn if warn else ""))
         except Fail as e:
             row.update(status="FAILED", detail=str(e))
     print(json.dumps(rows, indent=1))

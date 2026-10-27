@@ -144,6 +144,20 @@ Verify **inline**, in this context — the report and most of the files are
 already here, and a subagent would read them from cold. Only when more than 8
 findings are selected, delegate to at most 4 parallel verifiers.
 
+### Quick check for skeptic-verified findings
+
+A finding that the `deep` engine or `topology-review` returned as `CONFIRMED` in
+the current round already survived an adversarial verifier. Do not repeat that
+work. Run only these checks:
+
+- **Locate by symbol.** Gone or changed → `ALREADY_FIXED`. Still there → keep
+  `CONFIRMED`. Skip the reachability and upstream-guard checks.
+- **The report's suggested fix** — verify it as usual. The skeptics judged the
+  defect, not the fix.
+
+The full checks above still apply to `PLAUSIBLE` findings from those engines, to
+carried-forward findings, and to every other engine.
+
 ### Fable second check
 
 A `REFUTED` or `PLAUSIBLE` verdict gets a second opinion from a different model.

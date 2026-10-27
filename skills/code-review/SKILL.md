@@ -1,8 +1,8 @@
 ---
 name: code-review
-description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. When the PR or branch names a Notion task (GEN-<n>), checks the whole PR against the task's requirements and acceptance criteria, in both directions. A parallel agent describes the change, its design impact (design-impact skill) and an ASCII diagram (show-me skill). Heavier engines (an inline multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
+description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. When the PR or branch names a Notion task (GEN-<n>), checks the whole PR against the task's requirements and acceptance criteria, in both directions. A parallel agent describes the change, its design impact (design-impact skill) and an ASCII diagram (show-me skill); --summary swaps the diagram for Goal / Core change lines. Heavier engines (an inline multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
 when_to_use: reviewing branch/uncommitted work against a base ref; for reviewer feedback on an open PR use pr-review instead
-argument-hint: "[--base <ref>] [--deep] [--topology] [max]"
+argument-hint: "[--base <ref>] [--deep] [--topology] [max] [--summary]"
 ---
 
 # Code Review
@@ -62,6 +62,7 @@ Read the diff first. Then read **only** what you need to judge it:
   in that file (invariants, init order, shared mutable state). Not by default.
 - For declarative config, sibling files in the same directory and anything the diff
   transitively references.
+- The source and sink of data a hunk handles — see "Beyond the hunk".
 
 Do not read every changed file end to end. That habit is what makes this review
 expensive, and it rarely changes a verdict.
@@ -93,6 +94,9 @@ expensive, and it rarely changes a verdict.
 9. **Configuration & manifest consistency** — Only when the diff touches K8s/Helm/
    Kustomize/Argo/Terraform/CI config: read `config-review.md` in this skill's
    directory and apply it. Skip entirely otherwise.
+10. **Marinade conformance** — Only when the repo owner is `marinade-finance`: read
+   `marinade-review.md` in this skill's directory and apply it, to the diff and to
+   every suggested fix. Skip entirely otherwise.
 
 Only report problems. No praise, no neutral observations.
 
@@ -112,6 +116,8 @@ judge the hits. This list is what keeps the lean path from being a shallow path.
 - **Resource lifecycle.** Connections, locks, streams, subscriptions and intervals
   created in the diff: opened once, or once per call? Released on every path,
   including the error path?
+- **Beyond the hunk.** For data a hunk handles, check where it comes from, how large
+  it can get, and where it goes — the defect often sits just outside the diff.
 - **Money arithmetic.** Token amounts, rates and balances on JS `number` rather than
   `Decimal`/`bigint`; float equality; rounding direction on a value that leaves the
   process.
@@ -119,6 +125,24 @@ judge the hits. This list is what keeps the lean path from being a shallow path.
   test files for the symbol. Name the uncovered scenario — do not just note absence.
 - **Reuse before new utility code.** For every new helper in the diff, grep for an
   existing equivalent (and typescript-common for TS) before accepting it.
+
+## Review lessons
+
+Lessons are checks learned from past misses, one line each, approved by the user.
+They live in `lessons/` in this skill's directory. Read them right after the
+`gh pr view` call in Task conformance, as one Read per file that exists:
+
+- `_global.txt` — always.
+- `marinade.txt` — when the repo owner is `marinade-finance`.
+- `<repo>.txt` — the repo name from the PR URL, or from `git remote -v` with no PR.
+
+A plain line is a targeted check: run it whenever the diff touches its area, even
+when the code it names sits outside the hunks. A finding a lesson produced names
+it: `Lesson: <file>:<first words of the line>`. A line starting `skip:` names a
+point the user declined before — drop a candidate it matches at verification.
+
+Never edit these files from this skill. New lines come only through the
+`review-lesson` skill, after the user approves them.
 
 ## Change description — always, in parallel
 
@@ -158,9 +182,22 @@ Withdrawals now settle through one code path instead of two.
 
 If a bullet needs a second sentence to be understood, keep it — readable beats short.
 The 120-word cap covers the description only, not the other two parts.
-If the agent is unavailable or errors, write all three parts yourself from the diff
-you already read, following the two skills. They are never skipped, and never retried
-with a second agent.
+
+**With `--summary`** the agent writes a different description and draws no diagram.
+Swap these into its prompt: the description becomes two labeled one-sentence lines,
+then 2-4 bullets on how the changed behaviour works end to end; drop the show-me step
+and return two parts, description and design-impact block. Same 120-word cap.
+
+```
+Goal: a getBlock reply with an all-zero parent no longer reaches the client as valid.
+Core change: such a reply now counts as a null result and fails over to the next provider.
+
+- A byte pre-check finds candidate bodies; a parse confirms them under 4 MB.
+- Over 4 MB the body is forwarded as-is, with no health credit for the provider.
+```
+If the agent is unavailable or errors, write its parts yourself from the diff you
+already read, following the skills. They are never skipped, and never retried with a
+second agent.
 
 ## Parallel codex review
 
@@ -220,10 +257,14 @@ the skill and cannot be silently absent.
 
 ```
 Workflow({
-  args: { base: "<BASE_REF>", level: "<LEVEL>" },
+  args: { base: "<BASE_REF>", level: "<LEVEL>", lessons: "<plain lesson lines, newline-joined>" },
   script: "<the script below, verbatim>"
 })
 ```
+
+`lessons` carries the plain lines from Review lessons, without the `skip:` ones.
+Pass `""` when there are none. `extra` is a list of `{key, brief}` dimensions
+appended to the four built-in ones — see the end of this section.
 
 `LEVEL` is `high` for `--deep` and `xhigh` for `max`. It sets each agent's
 reasoning effort and how many skeptics rule on each candidate — one for `--deep`,
@@ -231,8 +272,8 @@ three with a majority rule for `max`. Never run it below `high`: `--deep` is the
 pre-merge verification pass, and a discounted run of the expensive engine is the
 worst of both — you pay for it and still do not know what it missed.
 
-Cost: 7 finders plus one verifier per surviving candidate, capped at 7 candidates.
-So at most 14 agents under `--deep`, 28 under `max`.
+Cost: 4 finders plus one verifier per surviving candidate, capped at 7 candidates.
+So at most 11 agents under `--deep`, 25 under `max`.
 
 ```js
 export const meta = {
@@ -276,22 +317,23 @@ const VERDICT = {
 }
 
 const DIMENSIONS = [
-  { key: 'correctness', brief: 'Logical flaws, wrong assumptions, edge cases, off-by-one, race conditions, improper error handling, broken invariants. Trace every early return, throw and `?` the diff adds to or removes from a touched function, and establish what now skips the code below it.' },
+  { key: 'correctness', brief: 'Logical flaws, wrong assumptions, edge cases, off-by-one, race conditions, improper error handling, broken invariants. Trace every early return, throw and `?` the diff adds to or removes from a touched function, and establish what now skips the code below it. Async calls with no await, including `.map(async` and `forEach(async` with no awaited Promise.all. Connections, locks, streams, subscriptions and intervals created in the diff: opened once or once per call, and released on every path including the error path. For data a hunk handles, check where it comes from, how large it can get, and where it goes — the defect often sits just outside the diff.' },
   { key: 'regression', brief: 'Behaviour existing callers rely on that this diff changes. Grep repo-wide for every call site of anything whose signature, return shape, nullability or error behaviour changed — never assume the diff updated them all. For each new conditional branch, grep the test files for the symbol and name the uncovered scenario.' },
-  { key: 'data', brief: 'Data corruption, SQL injection, wrong joins, missing transactions, races on read/write/insert. Token amounts, rates and balances on floating point instead of Decimal/bigint; float equality; rounding direction on a value that leaves the process.' },
-  { key: 'lifecycle', brief: 'Async calls with no await, including `.map(async` and `forEach(async` with no awaited Promise.all. Connections, locks, streams, subscriptions and intervals created in the diff: opened once or once per call, and released on every path including the error path.' },
-  { key: 'quality', brief: 'Dead or unreachable code, unused exports, DRY violations, unnecessary complexity, overly defensive checks, verbose constructs a standard-library call replaces. Give the simplified version inline. Report only what meaningfully cuts lines or cognitive load — never style preference or renaming.' },
-  { key: 'reuse', brief: 'New helper code that duplicates something the repository already provides. Grep for an existing equivalent behind every new helper in the diff. For TypeScript, also judge whether the shared typescript-common package should own it instead.' },
-  { key: 'security', brief: 'Secrets or credentials in code, unvalidated or unsanitized input, hand-rolled crypto or auth where a maintained library exists, unsafe deserialization, overly permissive access control.' },
+  { key: 'data-security', brief: 'Data corruption, SQL injection, wrong joins, missing transactions, races on read/write/insert. Token amounts, rates and balances on floating point instead of Decimal/bigint; float equality; rounding direction on a value that leaves the process. Secrets or credentials in code, unvalidated or unsanitized input, hand-rolled crypto or auth where a maintained library exists, unsafe deserialization, overly permissive access control.' },
+  { key: 'quality-reuse', brief: 'Dead or unreachable code, unused exports, DRY violations, unnecessary complexity, overly defensive checks, verbose constructs a standard-library call replaces. Give the simplified version inline. Report only what meaningfully cuts lines or cognitive load — never style preference or renaming. New helper code that duplicates something the repository already provides: grep for an existing equivalent behind every new helper in the diff. For TypeScript, also judge whether the shared typescript-common package should own it instead.' },
+  ...(args.extra || []),
 ]
 
 const base = args.base
 const effort = args.level === 'xhigh' ? 'xhigh' : 'high'
 const skeptics = args.level === 'xhigh' ? 3 : 1
 const CAP = 7
+const lessons = args.lessons
+  ? `\n\nLessons from past misses — run each one whose area the diff touches, even where the code it names lies outside the hunks:\n${args.lessons}`
+  : ''
 
 const rounds = await parallel(DIMENSIONS.map(d => () => agent(
-  `Review the changes of \`git diff ${base}\` in this repository. Your dimension, and nothing else: ${d.brief}\n\n` +
+  `Review the changes of \`git diff ${base}\` in this repository. Your dimension, and nothing else: ${d.brief}${lessons}\n\n` +
   `Read the diff first. Then read only the enclosing function or module of each hunk, plus the direct callers of anything whose signature or behaviour changed. Read a whole file only when a hunk's correctness genuinely depends on distant state in it. Do not read every changed file end to end.\n\n` +
   `Report only defects — no praise, no neutral observations. Every finding needs a concrete failure scenario: the specific inputs or state, and the wrong output, crash or corruption they produce. Omit anything you cannot give such a scenario for. priority: 1 high, 2 medium, 3 low.`,
   { label: `find:${d.key}`, phase: 'Review', schema: FINDINGS, effort }
@@ -361,9 +403,15 @@ verdict through instead of re-verifying, and fold them in on the same terms as
 codex. Candidates its skeptics refuted never come back; that is what you paid for.
 Report `not_verified_due_to_cap` entries rather than dropping them silently.
 
-Its dimensions cover Objectives 1-8. **Objective 9 is not among them** — when the
-diff touches K8s/Helm/Kustomize/Argo/Terraform/CI config, append an eighth
-dimension built from `config-review.md` instead of assuming the engine looked.
+Its dimensions cover Objectives 1-8. **Objectives 9 and 10 are not among them** —
+pass them through `extra` instead of assuming the engine looked:
+
+- Diff touches K8s/Helm/Kustomize/Argo/Terraform/CI config →
+  `{key: "config", brief: "Read <abs path of config-review.md> and apply it."}`
+- Repo owner is `marinade-finance` →
+  `{key: "marinade", brief: "Read <abs path of marinade-review.md> and apply it."}`
+
+Each one adds a finder, so the cost line above grows by one agent per entry.
 
 **If the `Workflow` tool is unavailable in this session, or the call errors, the
 review the user asked for did not happen.** Do not bury it. Say so as the first line
@@ -428,8 +476,9 @@ Before assembling the report, look up any prior saved review file so this run
 can pick up where the last one left off.
 
 1. Resolve `$SAVE_PLAN_PATH` (`python3 -c 'import os; print(os.environ.get("SAVE_PLAN_PATH",""))'`).
-2. Scan for prior saved reviews matching this branch/PR — typically
-   `*--<branch>--*REVIEW*.md` or `*--<branch>--pr-<N>--REVIEW*.md`.
+2. Scan for prior saved reviews of this PR: `<repo>--<branch>--pr-<N>*REVIEW*.md` when a
+   PR exists — never the branch alone, since authors reuse a branch name for a new PR.
+   With no PR, `<repo>--<branch>--*REVIEW*.md`.
 
 **Delegate the scan and the extraction to the `locator` agent** — saved REVIEW
 files reach 200KB+ and only the finding index is needed here. Give it this task:
@@ -539,10 +588,10 @@ Every finding's body uses its `<ID>` as the heading anchor (e.g. `### R1#1-P1 �
 After `save-plan` reports the saved file path, print, in this order and nothing else:
 
 1. The change description from the parallel agent, under a `**Changes under review**`
-   heading — lead sentence plus its bullets, as shown in the section above. Trim any
-   preamble the agent added.
+   heading, in the shape shown in the section above. Trim any preamble the agent added.
 2. The agent's design-impact block, verbatim.
-3. The agent's diagram block, or its `Diagram: none` line, verbatim.
+3. The agent's diagram block, or its `Diagram: none` line, verbatim. Omitted under
+   `--summary`.
 4. The absolute saved-file path from step 2, on its own line.
 5. The table. No prose after it.
 6. If a PR exists, `PR: <full PR URL>` on its own line, as the **last** output.
@@ -567,11 +616,11 @@ Table columns:
 
 The chapter body is ordered as:
 
-0. **Changes under review** — the agent's three parts: description, design-impact
-   block, diagram.
+0. **Changes under review** — the agent's parts: description, design-impact block,
+   and the diagram unless `--summary`.
 1. **Compound review** (first, primary) — your verified findings with the findings
    of whichever other engines ran folded in. Each finding uses its `<ID>` and
-   carries its verdict. Note the engine that earned it (e.g. `codex`,
+   carries its verdict. Note the engine that earned it (e.g. `codex`, `deep`,
    `topology/fan-out`).
 2. **Task conformance** (when a task was found) — task id and link, then one line
    per ask: number, the ask, MET / PARTIAL / MISSING / DIVERGENT, `file:line` or the
@@ -605,7 +654,7 @@ If none fires, say `Topology triggers: none` and leave it there. Do not run the
 engine on your own initiative either way.
 
 End with one line naming which engines actually ran and how many findings each
-contributed. A review that silently lost an engine must not read as a full-fanout
+contributed, then `Lessons: <n> loaded from <files>, <m> findings, <s> skipped`. A review that silently lost an engine must not read as a full-fanout
 review. An engine that ran but returned nothing usable is **not** the same as an
 engine that ran clean; state which happened. If a heavier engine was not requested,
 say so plainly (e.g. `deep engine: not run (no --deep)`).

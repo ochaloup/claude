@@ -1,0 +1,1 @@
+A size-ceiling test must use a body far above the ceiling and assert on peak memory or streaming, not only the outcome label (https://github.com/marinade-finance/waypoint/pull/79)

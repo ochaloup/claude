@@ -1,0 +1,1 @@
+getProgramAccounts replies reach ~1 GB against a 2Gi pod limit; any forward/verify change must keep per-request memory independent of reply size, counting every raced arm (https://github.com/marinade-finance/waypoint/pull/79)
