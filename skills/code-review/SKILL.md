@@ -272,8 +272,8 @@ three with a majority rule for `max`. Never run it below `high`: `--deep` is the
 pre-merge verification pass, and a discounted run of the expensive engine is the
 worst of both — you pay for it and still do not know what it missed.
 
-Cost: 4 finders plus one verifier per surviving candidate, capped at 7 candidates.
-So at most 11 agents under `--deep`, 25 under `max`.
+Cost: one finder per dimension plus one verifier per pooled candidate (three under
+`max`). Every candidate is verified; none is dropped for cost.
 
 ```js
 export const meta = {
@@ -327,7 +327,6 @@ const DIMENSIONS = [
 const base = args.base
 const effort = args.level === 'xhigh' ? 'xhigh' : 'high'
 const skeptics = args.level === 'xhigh' ? 3 : 1
-const CAP = 7
 const lessons = args.lessons
   ? `\n\nLessons from past misses — run each one whose area the diff touches, even where the code it names lies outside the hunks:\n${args.lessons}`
   : ''
@@ -356,16 +355,13 @@ const pooled = [...byKey.values()]
 
 if (!pooled.length) {
   log('no candidates from any dimension — nothing to verify')
-  return { findings: [], not_verified_due_to_cap: [] }
+  return { findings: [] }
 }
 
 pooled.sort((a, b) => a.priority - b.priority)
-const queue = pooled.slice(0, CAP)
-if (pooled.length > queue.length) {
-  log(`verifying ${queue.length} of ${pooled.length} candidates (cap ${CAP}); ${pooled.length - queue.length} not verified due to cap`)
-}
+log(`verifying all ${pooled.length} candidates`)
 
-const ruled = await parallel(queue.map(f => () =>
+const ruled = await parallel(pooled.map(f => () =>
   parallel(Array.from({ length: skeptics }, (_, i) => () => agent(
     `Argue against this review finding, then rule on it.\n\n` +
     `File: ${f.file}${f.line ? ':' + f.line : ''}\n` +
@@ -389,19 +385,18 @@ const ruled = await parallel(queue.map(f => () =>
 ))
 
 const survivors = ruled.filter(Boolean)
-log(`${survivors.length} of ${queue.length} candidates survived the adversarial pass`)
-return { findings: survivors, not_verified_due_to_cap: pooled.slice(CAP) }
+log(`${survivors.length} of ${pooled.length} candidates survived the adversarial pass`)
+return { findings: survivors }
 ```
 
 Passing `--deep` is itself the opt-in — do not ask for separate confirmation. The
 call returns immediately with a run ID and notifies on completion, so continue with
 your own analysis meanwhile.
 
-It returns `{findings, not_verified_due_to_cap}`. Every entry in `findings` already
-carries a `CONFIRMED` or `PLAUSIBLE` verdict from the adversarial pass — carry that
-verdict through instead of re-verifying, and fold them in on the same terms as
-codex. Candidates its skeptics refuted never come back; that is what you paid for.
-Report `not_verified_due_to_cap` entries rather than dropping them silently.
+It returns `{findings}`. Every entry already carries a `CONFIRMED` or `PLAUSIBLE`
+verdict from the adversarial pass — carry that verdict through instead of
+re-verifying, and fold them in on the same terms as codex. Candidates its skeptics
+refuted never come back; that is what you paid for.
 
 Its dimensions cover Objectives 1-8. **Objectives 9 and 10 are not among them** —
 pass them through `extra` instead of assuming the engine looked:
@@ -454,8 +449,6 @@ not re-verify. Two handling rules specific to this engine:
 - It distinguishes pre-existing defects whose blast radius this change multiplied
   from ones the change introduced. Preserve that distinction — it determines who
   owns the fix.
-
-Report `not_verified_due_to_cap` entries rather than dropping them silently.
 
 If the skill is unavailable or errors, report it the same way as a failed deep
 engine: first line of the chat summary, naming the reason, stating that the
@@ -636,8 +629,8 @@ The chapter body is ordered as:
 Do **not** paste the deep engine's or the topology engine's raw output into
 the report — they are long and re-inflate context for little value. Instead, for
 each engine that ran, record one line: how many candidates it produced, how many
-survived, and for topology its thesis, which lenses fired, and any
-`not_verified_due_to_cap` entries. The thesis in particular must appear — every
+survived, and for topology its thesis and which lenses fired. The thesis in
+particular must appear — every
 topology finding is conditional on it.
 
 ### Topology self-check (one line, always)

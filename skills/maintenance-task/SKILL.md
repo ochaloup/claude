@@ -180,3 +180,22 @@ GEN-<n> <task URL>
 
 If the fetch fails or `Task ID` is empty, print `GEN-? <task URL>` and say why in
 one line.
+
+## Fallback — the claude-work account
+
+This account may lack Notion access. Fall back when `ToolSearch` finds no
+`notion-create-pages` (only an `authenticate` tool, or nothing), or a Notion call fails
+on auth or permissions. Never fall back once `notion-create-pages` succeeded — that
+files a duplicate.
+
+Draft everything that needs no Notion here: severity, title, tags, body. Then:
+
+1. `Write` a prompt file to the scratchpad: "Use only the Notion MCP tools and Read.
+   Read `~/.claude/skills/maintenance-task/SKILL.md`. Resolve its Fixed target, upload
+   the files below per its Links and attachments, create the task with the properties
+   and body below, then do its After creating step. Skip its Fallback section." Append
+   Priority, Tags, Name, the body verbatim, and the absolute path of each file to attach.
+2. Run `~/.claude/scripts/notion-via-claude-work.sh <prompt-file>` with a 600000 ms
+   timeout.
+3. Print the `GEN-<n> <task URL>` line from its stdout. No such line → say why in one
+   line, then print the drafted title and body so nothing is lost.

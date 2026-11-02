@@ -1,7 +1,7 @@
 ---
 name: review-lesson
-description: Propose at most three review lessons from the review round in this conversation — a defect a later fix PR exposed (--retro), findings an earlier round missed, findings the author or the user declined — ask the user which to keep, and append only the ticked lines to the code-review skill's lessons files. Never writes a line the user did not approve, never commits.
-when_to_use: at the end of a review round — code-review-marinade-all calls it after --first and --followup — or by hand when a review missed something or flagged something wrong; to run a review use code-review
+description: Propose at most three review lessons from the review round in this conversation — a defect a later fix PR exposed (--retro), findings an earlier round missed — as detailed checks of what to look at more closely, ask the user which to keep, and append only the ticked lines to the code-review skill's lessons files. Never proposes skip lines, never writes a line the user did not approve, never commits.
+when_to_use: at the end of a review round — code-review-marinade-all calls it after --first and --followup — or by hand when a review missed something; to run a review use code-review
 argument-hint: "[<pr-url>] [--retro <prior-pr-url>] [<free-text lesson>]"
 ---
 
@@ -12,6 +12,9 @@ Arguments: $ARGUMENTS
 Lessons are one-line checks that `code-review` reads on every run. Each one costs
 tokens on every review, so a line earns its place only if it will fire again. This
 skill proposes; the user decides.
+
+Lessons only ever add checks — what to look at more closely. Never propose a `skip:`
+line: whether a point is a defect depends on the repo and the situation.
 
 Every bash call is one plain command: no pipes, `;`, `&&`, redirects or `$(...)`.
 
@@ -34,11 +37,12 @@ Take them from these sources, in this order:
    (finding headings only) and this PR's diff. Decide: which defect this PR fixes,
    whether it was inside the prior diff or one step from it, and whether the prior
    review had a finding for it. A miss becomes a candidate: the check that would
-   have caught it.
+   have caught it. Name the defect class too (e.g. memory exhaustion from an
+   unbounded read), so the check also catches its siblings, not only this instance.
 3. **Earlier-round misses** — findings in this conversation marked `pre-existing`
    by pr-review-followup.
-4. **Wrong flags** — findings the author declined with a reason that held, or the
-   user dropped before posting. These become `skip:` candidates.
+
+Declined or dropped findings are never candidates.
 
 ## 3. Filter
 
@@ -56,10 +60,12 @@ Keep at most three, the most likely to fire again first.
 
 - **Scope.** `_global.txt` when it holds for any repo, `marinade.txt` when it is a
   Marinade convention, `<repo>.txt` when it names this repo's facts.
-- **Shape.** The trigger, then the check, then the source:
-  `<when a diff …>, <what to check> (<PR URL>)`. One line, under 200 characters.
-  Generic enough to fire again, concrete enough to act on.
-- **Skip lines.** `skip: <point> — <why it is not a defect here> (<PR URL>)`.
+- **Shape.** The trigger, then the check in detail, then the source:
+  `<when a diff …>, <what to trace or measure, and what proves it safe> (<PR URL>)`.
+  One line, under 300 characters. Generic enough to fire again, concrete enough to
+  act on. Example: `When a diff reads a request/response body or file, find where its
+  size is bounded before it is buffered; unbounded → flag memory exhaustion, and ask
+  for a test far over the bound that asserts peak memory (<PR URL>)`.
 
 ## 5. Ask
 

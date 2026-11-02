@@ -266,7 +266,7 @@ const raw = await parallel(
 
 // Barrier is deliberate: several lenses legitimately land on the same site from
 // different directions (fan-out and isolation-loss both find a shared connection),
-// and the cap below must rank across the whole pool, not per lens.
+// and the dedup below must run across the whole pool, not per lens.
 const pooled = raw.filter(Boolean).flat()
 const byLocation = new Map()
 for (const f of pooled) {
@@ -280,13 +280,8 @@ for (const f of pooled) {
 const RANK = { high: 0, medium: 1, low: 2 }
 const deduped = [...byLocation.values()].sort((a, b) => (RANK[a.severity] ?? 3) - (RANK[b.severity] ?? 3))
 
-const MAX_VERIFY = 8
-const toVerify = deduped.slice(0, MAX_VERIFY)
-const dropped = deduped.slice(MAX_VERIFY)
-log(`${pooled.length} raw -> ${deduped.length} deduped -> verifying ${toVerify.length}`)
-if (dropped.length) {
-  log(`CAPPED: ${dropped.length} lower-severity candidate(s) NOT verified: ${dropped.map(d => `${d.file}:${d.line}`).join(', ')}`)
-}
+const toVerify = deduped
+log(`${pooled.length} raw -> ${deduped.length} deduped -> verifying all ${toVerify.length}`)
 
 phase('Verify')
 const verdicts = await parallel(
@@ -321,7 +316,6 @@ return {
   confirmed: survived.filter(v => v.verdict === 'CONFIRMED'),
   plausible: survived.filter(v => v.verdict === 'PLAUSIBLE'),
   refuted,
-  not_verified_due_to_cap: dropped,
 }
 ```
 
@@ -336,8 +330,6 @@ return {
   and have had its blast radius multiplied by this change — say exactly that, and
   cite the pre-change code. It changes who owns the fix and stops the finding reading
   as an accusation.
-- Always report `not_verified_due_to_cap` explicitly. Silent truncation reads as
-  full coverage.
 
 ## Output
 

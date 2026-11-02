@@ -39,8 +39,22 @@ Load the tools with `ToolSearch` (`notion-search notion-fetch`).
 - An id → `notion-search` for `GEN-<n>`. Keep only the hit whose id property is
   exactly `GEN-<n>`, then `notion-fetch` it.
 
-Notion unavailable, or no exact hit → return the no-task line. Never fall back to
-the closest-looking task.
+Never fall back to the closest-looking task.
+
+### Fallback — the claude-work account
+
+This account may lack Notion access, and Notion hides pages it cannot see. Fall back
+when `ToolSearch` finds no `notion-search` / `notion-fetch` (only an `authenticate`
+tool, or nothing), a Notion call fails on auth or permissions, a link fetches as not
+found, or the search has no exact hit.
+
+1. `Write` a prompt file to the scratchpad: "Use only the Notion MCP tools. Read
+   `~/.claude/skills/gen-task/SKILL.md`, do its steps 2 and 3 for `<GEN-<n> | link>`
+   without its Fallback section, and print only its Output block."
+2. Run `~/.claude/scripts/notion-via-claude-work.sh <prompt-file>` with a 600000 ms
+   timeout.
+3. Return the `Task:` block from its stdout. No block, or the script fails → the
+   no-task line, reason `Notion unavailable (claude-work: <one-line cause>)`.
 
 ## 3. Extract the asks
 

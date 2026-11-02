@@ -3,7 +3,7 @@ name: code-review-marinade-all
 description: Find every open marinade-finance PR awaiting my review, prepare each repo under ~/marinade (clone, update the default branch, force-reset the PR branch), and open one yakuake tab per PR with a tmux session running the Claude command (--claude, default the current session's subscription) — this skill's --first mode for a first review, its --followup mode for a re-requested one. Skip-list repos, drafts, PRs I reacted to with 👀, docs-only PRs and PRs waiting for the author are listed, not reviewed. Ends with two tables, launched and not reviewed. The first mode reviews, gates each finding through a fresh agent and parks the survivors in a pending review only I can see; the followup mode replies to and resolves my own threads the author addressed or declined for a reason that holds. Nothing is ever submitted.
 when_to_use: the user wants all pending marinade-finance review requests set up for review in one go; the user still reads each result, edits the pending review and submits it
 model: sonnet
-argument-hint: "[--dry-run] [--claude <cmd>] | --first <pr-url> [--retro <pr-url>] | --followup <pr-url>"
+argument-hint: "[--dry-run] [--claude <cmd>] [--max <n>] | --first <pr-url> [--retro <pr-url>] | --followup <pr-url>"
 ---
 
 # Code review — all marinade PRs
@@ -15,11 +15,14 @@ With `--first <pr-url>` go to **First mode**, with `--followup <pr-url>` to
 
 ## Launcher
 
-Run as one bash call, passing `--dry-run` and `--claude <cmd>` through when given:
+Run as one bash call, passing `--dry-run`, `--claude <cmd>` and `--max <n>` through when given:
 
 ```
-python3 ~/.claude/skills/code-review-marinade-all/review_all.py [--dry-run] [--claude <cmd>]
+python3 ~/.claude/skills/code-review-marinade-all/review_all.py [--dry-run] [--claude <cmd>] [--max <n>]
 ```
+
+`--max` caps the `rev-*` tmux sessions alive at once, default 7; each runs a Claude
+process and more of them run the machine out of memory. Sessions already open count.
 
 `--claude` is the shell command typed into each tab's `claude` window, e.g. `claude-work`
 or `CLAUDE_CONFIG_DIR=~/.claude-x claude`. Quote it as one argument. Default: the current
@@ -32,6 +35,10 @@ It prints a JSON list, one row per PR found by
   `claude` and `bash`, yakuake tab `<repo>#<n>` attached to it.
 - `READY` — `--dry-run` only: would be launched.
 - `OPEN` — the tmux session already exists; nothing touched.
+- `QUEUED` — would be launched, but `--max` sessions are already alive; repo not
+  touched, no tab. `detail` is the mode it would get.
+- `MANUAL` — `ansible` repo: passes every filter below but I review it by hand;
+  repo not touched, no tab. `detail` is the mode it would get.
 - `NOT-REVIEWED` — skip-list repo, draft, parked (my 👀 reaction on the PR
   description), docs only, or I reviewed and the author has not re-requested me yet.
 - `FAILED` — clone, fetch, checkout or launch failed; `detail` says why.
@@ -43,22 +50,29 @@ The docs rule and directory layout live in `review_all.py`; edit them there.
 
 ### Output
 
-One bold line: `<l> launched, <n> not reviewed, <f> failed`. Then two tables.
+One bold line: `<l> launched, <q> queued, <m> manual, <n> not reviewed, <f> failed`. Then two tables.
 Summary is one short line written from the PR title — what the PR does, no
 ticket id. PR is a markdown link `[<repo>#<n>](<url>)`.
 
-Launched (`LAUNCHED`, `READY`, `OPEN`):
+Launched (`LAUNCHED`, `READY`, `OPEN`, `MANUAL`):
 
 | PR | Summary | Mode | Tab / directory |
 |----|---------|------|-----------------|
 
-Not reviewed (`NOT-REVIEWED`, `FAILED`):
+Not reviewed (`QUEUED`, `NOT-REVIEWED`, `FAILED`), `QUEUED` rows first with Reason
+`queued (<mode>)`:
 
 | PR | Summary | Reason |
 |----|---------|--------|
 
 A `WARN` in a launched row's detail (default branch not fast-forwarded) goes
-into its Mode cell. Nothing after the tables.
+into its Mode cell. A `MANUAL` row's Mode cell is `TODO (manual, <detail>)`, its
+Tab / directory cell `—`.
+
+No `QUEUED` row → nothing after the tables. Otherwise ask with AskUserQuestion:
+"<q> reviews queued. Close finished `rev-*` sessions (`tmux kill-session -t <name>`),
+then continue?" — options `Continue` and `Stop`. On `Continue` run the launcher again
+with the same arguments and print its output the same way; on `Stop`, stop.
 
 ## First mode
 
@@ -92,8 +106,7 @@ Runs inside a launched tab for a PR I have not reviewed yet.
 3. Invoke `post-review-comments` with the POST IDs, comma-joined, and the PR URL.
    No POST rows → skip it in one line.
 4. Invoke `review-lesson` with the PR URL, plus `--retro <url>` when this mode was
-   given one. The DROP rows the gate matched to no skip line are its wrong-flag
-   candidates.
+   given one.
 5. Print the gate's lines as a table — `ID | Gate | Reason` — then the pending review
    line from step 3, then `PR: <PR URL>` as the last line, and stop. ASK rows stay
    off GitHub; posting one is the user's `post-review-comments` run.
@@ -138,8 +151,8 @@ Runs inside a launched tab for a PR I already reviewed and was re-requested on.
    ```
    python3 -c 'import os;exec(open(os.path.expanduser("~/.claude/scripts/gh_reply_threads.py")).read())' <scratch>/replies.json
    ```
-5. Invoke `review-lesson` with the PR URL. ACCEPTed declines are its wrong-flag
-   candidates, `pre-existing` findings its earlier-round misses.
+5. Invoke `review-lesson` with the PR URL. `pre-existing` findings are its
+   earlier-round misses.
 6. Under the followup table print one line per thread, `<ID> | resolved | <reply URL>`,
    then one per REJECTed decline, `<ID> | left open | <the gate's reason>`, then
    `PR: <PR URL>` as the last line, and stop. New findings stay in the report —

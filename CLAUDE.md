@@ -29,6 +29,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 ## 0.1. System settings
 
 - Max 4 parallel agents when delegating tasks. Exception: inside explicitly requested workflows (Workflow tool), the workflow's own concurrency limit applies.
+- Links: always write the full URL as plain text (https://github.com/org/repo/pull/123). Never `[text](url)` or a bare `#123` — my terminal can't click those.
 - For any code output that can be useful for copy&paste purposes (testing, check-ups, placing to editor...): no formatting, flush left, no trailing whitespace.
 - Comments:
   - ZERO by default. At most 1 short line, ONLY when the WHY is not derivable from names, types, or surrounding code. Comments carry rationale/design/context — never restate WHAT the code does.
@@ -40,6 +41,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
   - Never put tickets numbers, code number lines into comments
 - Markdown docs (README.md, ARCHITECTURE.md, any *.md — NOT config files, which follow the Comments rules above verbatim): the Comments rules above apply to prose too. Say the WHY and the WHAT in the fewest sentences that carry them. Never narrate the investigation, never restate what the code, a table, or a log message on the page already says. Two or three sentences beat a paragraph; a worked example earns its place only if a reader must act on it. Edit the existing sentence instead of appending a new paragraph beside it, and delete what your change made redundant.
 - If a Docker-dependent step (testcontainers, `docker` CLI, etc.) fails with `SocketNotFoundError("/var/run/docker.sock")` or "Cannot connect to the Docker daemon", this machine likely runs Podman, not Docker. Suggest the user export `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock` and retry — do not chase it as a code bug.
+- Any script calling mayfly (`https://mayfly.marinade.finance/...`) must send a non-default `User-Agent` (e.g. `curl/8.5.0`); Cloudflare rejects Python's `urllib`/`requests` default agent with HTTP 403 `error code: 1010`.
 
 ### 0.21. Shell discipline
 

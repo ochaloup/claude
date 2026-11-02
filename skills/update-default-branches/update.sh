@@ -6,23 +6,22 @@ export GIT_SSH_COMMAND="ssh -o BatchMode=yes"
 
 update_repo() {
   local repo=${1%/.git}
-  local remote remotes url branch current before after out
+  local remote= remotes r url branch current before after out
   remotes=$(git -C "$repo" remote)
-  if [[ $'\n'$remotes$'\n' == *$'\n'origin$'\n'* ]]; then
-    remote=origin
-  elif [[ -n $remotes && $remotes != *$'\n'* ]]; then
-    remote=$remotes
-  else
-    printf 'SKIP\t%s\tno origin and not exactly one remote: %s\n' "$repo" "${remotes//$'\n'/ }"; return
-  fi
+  # origin is often a personal fork; the org remote holds the real default branch
+  for r in $remotes; do
+    [[ $(git -C "$repo" remote get-url "$r") == *github.com[:/]marinade-finance/* ]] && { remote=$r; break; }
+  done
+  [[ -z $remote && $'\n'$remotes$'\n' == *$'\n'upstream$'\n'* ]] && remote=upstream
+  [[ -z $remote && $'\n'$remotes$'\n' == *$'\n'origin$'\n'* ]] && remote=origin
+  [[ -z $remote && -n $remotes && $remotes != *$'\n'* ]] && remote=$remotes
+  [[ -n $remote ]] || { printf 'SKIP\t%s\tno marinade-finance, upstream or origin remote, and not exactly one remote: %s\n' "$repo" "${remotes//$'\n'/ }"; return; }
   url=$(git -C "$repo" remote get-url "$remote")
   [[ $url == *github.com* ]] || { printf 'SKIP\t%s\t%s is not on github: %s\n' "$repo" "$remote" "$url"; return; }
 
   branch=$(git -C "$repo" symbolic-ref --short -q "refs/remotes/$remote/HEAD")
-  if [[ -z $branch ]]; then
-    git -C "$repo" remote set-head "$remote" --auto >/dev/null 2>&1
-    branch=$(git -C "$repo" symbolic-ref --short -q "refs/remotes/$remote/HEAD")
-  fi
+  # set-head --auto fails when the remote-tracking branch was never fetched, ls-remote does not
+  [[ -n $branch ]] || branch=$(git -C "$repo" ls-remote --symref "$remote" HEAD 2>/dev/null | sed -n 's|^ref: refs/heads/\(.*\)\tHEAD$|\1|p')
   branch=${branch#"$remote"/}
   [[ -n $branch ]] || { printf 'FAIL\t%s\tcannot resolve default branch of %s\n' "$repo" "$remote"; return; }
 

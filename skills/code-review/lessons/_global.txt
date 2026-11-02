@@ -1,1 +1,4 @@
 A size-ceiling test must use a body far above the ceiling and assert on peak memory or streaming, not only the outcome label (https://github.com/marinade-finance/waypoint/pull/79)
+When an override aliases a vulnerable package to a fork, diff the fork's source against the vulnerable version; a rename only hides the advisory from audit (https://github.com/marinade-finance/mnde-nft-api/pull/39)
+When a dependency bump is blamed for a lint, build or test failure, confirm the check passes on the base branch first; same failure on base is pre-existing (https://github.com/marinade-finance/network-stats/pull/35)
+When a diff changes engines.node, the CI node-version or the lockfile's engines floors, check every doc Node version claim (CLAUDE.md, README) matches the declared range; a mismatch means one side is wrong (https://github.com/marinade-finance/marinade-notifications/pull/85)

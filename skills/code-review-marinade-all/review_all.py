@@ -12,6 +12,7 @@ REMOTE = "marinade"
 ROOT = os.path.expanduser("~/marinade")
 WORKTREES = os.path.join(ROOT, ".review-worktrees")
 SKIP_REPOS = {r.strip() for r in os.environ.get("MARINADE_ALL_SKIP_REPOS", "").split(",") if r.strip()}
+MANUAL_REPOS = {"ansible"}
 DOC_EXTS = (".md", ".mdx", ".txt", ".rst", ".adoc", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
 DOC_DIRS = ("docs/", "doc/")
 LOCKS = {"Cargo.lock", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", ".release-please-manifest.json"}
@@ -141,6 +142,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--claude", help="shell command that starts Claude in each tab")
+    ap.add_argument("--max", type=int, default=7, help="max rev-* tmux sessions running at once")
     args = ap.parse_args()
     if not args.claude:
         conf = os.environ.get("CLAUDE_CONFIG_DIR")
@@ -150,6 +152,7 @@ def main():
     found = json.loads(run(["gh", "search", "prs", "--review-requested=@me", "--owner=" + ORG, "--state=open",
                             "--sort=updated", "--json", "repository,number,title,isDraft,url", "--limit", "100"]).stdout)
     sessions = tmux_sessions()
+    slots = args.max - sum(s.startswith("rev-") for s in sessions)
     used = set()
     rows = []
     for item in found:
@@ -182,6 +185,12 @@ def main():
             if reviewed and not any(r.get("login") == me for r in view["reviewRequests"]):
                 row.update(status="NOT-REVIEWED", detail="reviewed, waiting for author to re-request")
                 continue
+            if name in MANUAL_REPOS:
+                row.update(status="MANUAL", detail="followup" if reviewed else "first")
+                continue
+            if slots <= 0:
+                row.update(status="QUEUED", detail="followup" if reviewed else "first")
+                continue
             pr = {"repo": name, "number": number, "branch": view["headRefName"],
                   "fork": view["headRepositoryOwner"]["login"] != ORG}
             main_dir = os.path.join(ROOT, name)
@@ -192,6 +201,7 @@ def main():
             retro = None if reviewed else find_retro(name, item["title"], view["files"])
             mode = "followup" if reviewed else "first" + (" retro " + retro if retro else "")
             if dry:
+                slots -= 1
                 row.update(status="READY", detail=mode)
                 continue
             local, warn = prepare(pr, main_dir, workdir)
@@ -200,6 +210,7 @@ def main():
             else:
                 prompt = "/code-review-marinade-all --first " + item["url"] + (" --retro " + retro if retro else "")
             launch(session, workdir, args.claude, prompt, row["pr"])
+            slots -= 1
             row.update(status="LAUNCHED", detail="%s on %s, tmux %s%s" % (
                 mode, local, session, "; WARN " + warn if warn else ""))
         except Fail as e:
