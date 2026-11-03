@@ -108,8 +108,8 @@ Runs inside a launched tab for a PR I have not reviewed yet.
 4. Invoke `review-lesson` with the PR URL, plus `--retro <url>` when this mode was
    given one.
 5. Print the gate's lines as a table — `ID | Gate | Reason` — then the pending review
-   line from step 3, then `PR: <PR URL>` as the last line, and stop. ASK rows stay
-   off GitHub; posting one is the user's `post-review-comments` run.
+   line from step 3, then the **PR digest**, then `PR: <PR URL>` as the last line, and
+   stop. ASK rows stay off GitHub; posting one is the user's `post-review-comments` run.
 
 ## Followup mode
 
@@ -154,6 +154,24 @@ Runs inside a launched tab for a PR I already reviewed and was re-requested on.
 5. Invoke `review-lesson` with the PR URL. `pre-existing` findings are its
    earlier-round misses.
 6. Under the followup table print one line per thread, `<ID> | resolved | <reply URL>`,
-   then one per REJECTed decline, `<ID> | left open | <the gate's reason>`, then
-   `PR: <PR URL>` as the last line, and stop. New findings stay in the report —
-   posting them is the user's `post-review-comments` run.
+   then one per REJECTed decline, `<ID> | left open | <the gate's reason>`, then the
+   **PR digest**, then `PR: <PR URL>` as the last line, and stop. New findings stay in
+   the report — posting them is the user's `post-review-comments` run.
+
+## PR digest
+
+Both modes print it right above the `PR:` line, so I learn what the PR is about
+without scrolling up. It describes the whole PR's net effect against its base, never
+only the commits since my last review. Write it inline from the PR body and
+`git diff origin/<baseRefName>...HEAD`, in the format and style of the `pr-description`
+skill, steps 4-5 — do not invoke that skill, since it fetches:
+
+```
+**Problem:** <what is wrong or missing without this PR>
+**Core change:** <the one mechanism that answers it>
+**Goal:** <what the PR buys once merged>
+
+- <verb-first sentence: one change and the intention behind it>
+```
+
+All three labelled lines always, then 2-5 bullets. No finding IDs, no verdicts.
