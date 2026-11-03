@@ -1,6 +1,6 @@
 ---
 name: pr-review-followup
-description: Second (or later) round on a GitHub PR you already reviewed — computes the diff since your last review, gets conversation status from the pr-review skill, runs the code-review skill scoped to the new commits, adds a backwards-check against earlier PR commits, and unifies everything into one report saved via save-plan.
+description: Second (or later) round on a GitHub PR you already reviewed — computes the diff since your last review, gets conversation status from the pr-review skill, runs the code-review skill scoped to the new commits, adds a backwards-check against earlier PR commits, judges how each of your prior comments was fixed or declined (resolved threads included), and unifies everything into one report saved via save-plan.
 when_to_use: a PR you previously reviewed has new commits or new replies and needs another round; for a first-time pass use pr-review
 argument-hint: "[<pr-url>|<pr-number>]"
 ---
@@ -140,6 +140,29 @@ After `pr-review` finishes its classification, enrich each finding with:
    "fixed in post-review commits". If not, note "was already fixed at time of review
    (stale thread)".
 
+### 2a. Judge how each of my prior comments was handled
+
+`pr-review` drops resolved threads, but an author who resolves my thread with "ok for
+now", or with no reply and no code change, is exactly what this round must check.
+Fetch every inline thread whose first comment author is MY_LOGIN, resolved or not:
+
+```bash
+gh api graphql -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line resolvedBy { login } comments(first: 50) { nodes { author { login } body url createdAt } } } } } } }' -F owner=OWNER -F repo=REPO -F pr=PR_NUMBER
+```
+
+Add my review-body sub-asks from the reviews already fetched. For each item, record:
+
+- **Handling** — `FIXED_IN_CODE` (name the commit and hunk), `DECLINED` (quote the
+  author's reason), `RESOLVED_SILENTLY` (resolved with no reply and no code change),
+  or `OPEN`.
+- **Strategy** — `SOUND`, `WEAK` or `WRONG`, plus one sentence, judged against the
+  code at HEAD. A fix is SOUND when it does what the comment asked, completely, with
+  no cheaper substitute (step 4c). A decline is SOUND when its reason holds against
+  the code, and WEAK when it defers a real defect with no follow-up. A
+  `RESOLVED_SILENTLY` item whose concern is still in the code is never SOUND.
+
+This runs even when there are no new commits: a decline needs no code change.
+
 ## 3. Run the `code-review` skill scoped to new changes
 
 Invoke the `code-review` skill with the diff base set to the review anchor:
@@ -148,6 +171,11 @@ Invoke the `code-review` skill with the diff base set to the review anchor:
 This reviews only the changes made **after** your last review, applying all
 standard code-review objectives (logical flaws, regression risk, data correctness,
 dead code, code quality, simplification, reusability, security, config consistency).
+
+When `REVIEW_BASE..HEAD` is empty, skip the scoped review and 3a, but never the
+whole-PR parts: run code-review's "Change description" (with `--summary`) and
+"Approach check" sections yourself, with `PR_RANGE` = `<REMOTE>/<BASE_BRANCH>...HEAD`. Their PR block and
+`Approach fit:` line go into the report as on any other run.
 
 ### 3a. Light backwards-check
 
@@ -268,6 +296,21 @@ New commits since review: <NEW_COMMIT_COUNT>
 Round: R<ROUND>
 Prior findings re-checked: <N total — A addressed, S still present, U uncertain>   (omit when no prior file)
 Fix lineage: <N> of <M> new findings caused by prior-round fixes, <N> new code, <N> pre-existing   (omit when no prior file)
+Prior comments: <N> — <F> fixed, <D> declined, <S> resolved silently, <O> open; <W> WEAK or WRONG
+```
+
+### Changes under review
+
+The PR block and `Approach fit:` line from step 3, verbatim.
+
+### Prior comments — how each was handled
+
+From step 2a, one entry per comment:
+```
+<thread id or review-body sub-ask> — <one-line gist of my comment>
+Permalink: <full URL>
+Handling: <FIXED_IN_CODE <commit> | DECLINED "<author reason>" | RESOLVED_SILENTLY | OPEN>
+Strategy: <SOUND|WEAK|WRONG> — <one sentence against the code at HEAD>
 ```
 
 ### Section A: Conversation Status (from pr-review + enrichment)
@@ -399,6 +442,11 @@ cause. Omit the whole block when nothing traces back; a clean round should print
 nothing rather than an empty heading.
 
 Above that, print the absolute saved-file path from step 8 on its own line.
+
+Above the path, print in this order:
+1. `**Changes under review**`, then the PR block and the `Approach fit:` line, verbatim.
+2. `**Prior comments**`, then a table `Comment | Handling | Strategy`, one row per
+   step-2a item, WEAK and WRONG rows first. Strategy is the verdict plus its sentence.
 
 ## 10. Ask for next action
 

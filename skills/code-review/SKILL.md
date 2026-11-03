@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. When the PR or branch names a Notion task (GEN-<n>), checks the whole PR against the task's requirements and acceptance criteria, in both directions. A parallel agent describes the change, its design impact (design-impact skill) and an ASCII diagram (show-me skill); --summary swaps the diagram for Goal / Core change lines. Heavier engines (an inline multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
+description: Review this branch's changes against a base ref using git diff. Runs lean by default — your own analysis plus a parallel codex review, verified inline. When the PR or branch names a Notion task (GEN-<n>), checks the whole PR against the task's requirements and acceptance criteria, in both directions. A parallel agent states the whole PR's Problem / Core change / Goal (pr-description format), its design impact (design-impact skill) and an ASCII diagram (show-me skill); --summary drops the diagram. A second agent then judges from the base code whether the problem is real and whether a smaller fix would reach the same goal, reported as an `Approach fit` verdict. Heavier engines (an inline multi-agent review workflow, the topology-review skill) are opt-in via --deep / --topology / max. Assigns round-scoped IDs, persists the report through the save-plan skill, and ends with a summary table. Use when the user runs /code-review, or when the pr-review-followup skill needs a review scoped to new changes.
 when_to_use: reviewing branch/uncommitted work against a base ref; for reviewer feedback on an open PR use pr-review instead
 argument-hint: "[--base <ref>] [--deep] [--topology] [max] [--summary]"
 ---
@@ -147,57 +147,96 @@ Never edit these files from this skill. New lines come only through the
 ## Change description — always, in parallel
 
 The report says what is wrong with the diff. The reader also needs to know what the
-diff *does*. A subagent writes that while you review, so it costs no serial time.
+PR is for and what it does. A subagent writes that while you review, so it costs no
+serial time.
 
-The same agent also runs the `design-impact` and `show-me` skills, which sit next to
-this skill's directory. Resolve their absolute `SKILL.md` paths and substitute them.
+The description is the PR block of the `pr-description` skill, steps 4-5: Problem,
+Core change, Goal, then bullets. It always covers the whole PR — `PR_RANGE` is
+`origin/<baseRefName>...HEAD` from the `gh pr view` call, or the base ref when there is
+no PR — so a scoped run from pr-review-followup still states the PR's purpose. The
+design-impact and diagram parts stay on `<BASE_REF>`, the slice under review.
 
-Kick it off right after resolving the base ref, alongside the codex call:
+The same agent also runs the `design-impact` and `show-me` skills. Resolve the absolute
+`SKILL.md` paths of `pr-description`, `design-impact` and `show-me`, which sit next to
+this skill's directory, and substitute them.
+
+Kick it off right after the `gh pr view` call in Task conformance, alongside codex:
 
 ```
 Agent({ subagent_type: "Explore",
         model: "sonnet",
         description: "Describe branch changes",
-        prompt: "Run `git diff --stat <BASE_REF>`, then `git diff <BASE_REF>`. Say what
-                 the change does, in plain english. Return one lead sentence, then 3-6
-                 bullets. One bullet per change. Start each bullet with the file or
-                 area it touches. Say the intent, not the mechanics. Short sentences.
-                 No findings, no verdicts, no praise. Under 120 words total.
-                 Then read <DESIGN_IMPACT_SKILL_MD> and follow it with
-                 `--base <BASE_REF> --embedded`. Then read <SHOW_ME_SKILL_MD> and follow
-                 it with `--base <BASE_REF> --embedded`, drawing what the design-impact
-                 block names. Return three parts in order: description, design-impact
-                 block, diagram block. Every bash call is one plain command." })
+        prompt: "Read-only. Every bash call is one plain command. Read <PR_DESCRIPTION_SKILL_MD>,
+                 steps 4 and 5 only. Run `git diff --stat <PR_RANGE>`, then `git diff
+                 <PR_RANGE>`, and the PR body: <PR_BODY or 'none'>. Write the PR block those
+                 steps define — Problem, Core change, Goal lines, then 3-6 bullets — for the
+                 net effect of the whole PR. Problem says what is wrong or missing at base,
+                 not what the PR adds. No findings, no verdicts, no praise. Then read
+                 <DESIGN_IMPACT_SKILL_MD> and follow it with `--base <BASE_REF> --embedded`.
+                 Then read <SHOW_ME_SKILL_MD> and follow it with `--base <BASE_REF>
+                 --embedded`, drawing what the design-impact block names. Return three parts
+                 in order: PR block, design-impact block, diagram block." })
 ```
 
-This is the shape it must come back in:
+This is the shape the PR block must come back in:
 
 ```
-Withdrawals now settle through one code path instead of two.
+**Problem:** A getBlock reply with an all-zero parent reaches the client as a valid block.
+**Core change:** Such a reply now counts as a null result and fails over to the next provider.
+**Goal:** Clients never see a forged parent from one bad provider.
 
-- `src/vault.rs` — the two withdraw branches merged into `settle()`.
-- `src/fees.rs` — fee is taken once, in `settle()`, not per branch.
-- `tests/withdraw.rs` — new test for a withdrawal that hits the fee cap.
+- Detect candidate bodies with a byte pre-check and confirm them with a parse under 4 MB
+- Forward bodies over 4 MB as-is, with no health credit for the provider
 ```
 
-If a bullet needs a second sentence to be understood, keep it — readable beats short.
-The 120-word cap covers the description only, not the other two parts.
+**With `--summary`** drop the show-me step from the prompt and return two parts, PR
+block and design-impact block.
 
-**With `--summary`** the agent writes a different description and draws no diagram.
-Swap these into its prompt: the description becomes two labeled one-sentence lines,
-then 2-4 bullets on how the changed behaviour works end to end; drop the show-me step
-and return two parts, description and design-impact block. Same 120-word cap.
-
-```
-Goal: a getBlock reply with an all-zero parent no longer reaches the client as valid.
-Core change: such a reply now counts as a null result and fails over to the next provider.
-
-- A byte pre-check finds candidate bodies; a parse confirms them under 4 MB.
-- Over 4 MB the body is forwarded as-is, with no health credit for the provider.
-```
 If the agent is unavailable or errors, write its parts yourself from the diff you
 already read, following the skills. They are never skipped, and never retried with a
 second agent.
+
+## Approach check — always, after the description
+
+The other engines ask whether the code is right. This asks whether it is the right
+code: is the Problem real at base, and would a smaller change reach the same Goal?
+A cold agent judges it, so your own reading of the diff does not anchor the verdict.
+
+Start it as soon as the description agent returns its PR block. The deep engine is
+usually still running then, so it adds no serial time. Resolve the absolute path of
+the `pre-pr-design-pass` skill's `SKILL.md` and substitute it.
+
+```
+Agent({ subagent_type: "general-purpose",
+        description: "Judge the PR's approach",
+        prompt: "Read-only: no edits, no git state changes, no GitHub writes. Every bash call
+                 is one plain command. The PR states its purpose as:
+                 <PR_BLOCK>
+                 Its diff is `git diff <PR_RANGE>`. Read <PRE_PR_DESIGN_PASS_SKILL_MD>, sections
+                 'Read the base, not the diff', 'Two constraints that bind harder than the
+                 goal' and '4. Design lenses', and apply them as a reviewer. Read the base
+                 version of each touched file with `git show <PR_BASE>:<path>`. Answer two
+                 questions. 1: does the base code show the Problem — cite file:line? 2: does
+                 a smaller change reach the same Goal — reusing a base mechanism, touching
+                 fewer places, one mechanism instead of two? Everything the Goal names is a
+                 fixed constraint; never trade it for a smaller diff. Return line 1 exactly:
+                 `Approach fit: SOUND|SIMPLER EXISTS|PROBLEM UNCLEAR — <one sentence>`.
+                 SIMPLER EXISTS adds: the alternative in 1-3 sentences, the base file:line it
+                 reuses, the diff parts it replaces and a rough line count saved. PROBLEM
+                 UNCLEAR adds: what in the base contradicts the Problem or fails to show it.
+                 Answer SOUND unless the alternative is clearly smaller and equally correct." })
+```
+
+`<PR_BASE>` is `origin/<baseRefName>`, or the base ref when there is no PR.
+
+The `Approach fit` line always goes into the report. `SIMPLER EXISTS` and `PROBLEM
+UNCLEAR` also become a P2 candidate, engine `approach`, anchored at the core change's
+`file:line`. Its failure scenario is the cost: the code and mechanisms the PR adds
+that the alternative avoids, or the base evidence the Problem lacks. It goes through
+the verification ladder like any other candidate.
+
+If the agent is unavailable or errors, write `Approach fit: not judged (<reason>)` and
+go on. Never fill the verdict in yourself — it would be anchored on your review.
 
 ## Parallel codex review
 
@@ -507,7 +546,7 @@ already verified — keep their verdict and skip them here.
 2. **Verify each remaining candidate inline, in this context** — re-read the
    relevant code and argue against the candidate. Do not spawn verifier subagents;
    you already have the files in context and a subagent would re-read them from
-   cold. **The default path spawns no subagent except the change-description one.**
+   cold. **The default path spawns no subagent except the change-description and approach ones.**
    Only under `--deep` or
    `max`, and only when there are more than 8 unverified candidates, delegate to at
    most 4 parallel subagents.
@@ -559,6 +598,7 @@ the findings below are worth.
 - Write a short prose summary.
 - Task conformance in one line: `Task GEN-<n>: <m> of <k> asks met, <p> partial,
   <x> missing, <d> divergent, <u> unexplained changes` — or why it was skipped.
+- The `Approach fit:` line, verbatim.
 - If a PR exists, the summary MUST include the PR URL and clickable GitHub links (show directly in console whole link! with whole hash etc, no simplification via some md formatting) to all findings.
 - If no PR exists, use blob permalinks against the branch instead.
 
@@ -580,8 +620,9 @@ Every finding's body uses its `<ID>` as the heading anchor (e.g. `### R1#1-P1 �
 
 After `save-plan` reports the saved file path, print, in this order and nothing else:
 
-1. The change description from the parallel agent, under a `**Changes under review**`
-   heading, in the shape shown in the section above. Trim any preamble the agent added.
+1. The PR block from the parallel agent, under a `**Changes under review**` heading,
+   in the shape shown in the section above. Trim any preamble the agent added.
+   Directly under it, the `Approach fit:` line.
 2. The agent's design-impact block, verbatim.
 3. The agent's diagram block, or its `Diagram: none` line, verbatim. Omitted under
    `--summary`.
@@ -609,8 +650,9 @@ Table columns:
 
 The chapter body is ordered as:
 
-0. **Changes under review** — the agent's parts: description, design-impact block,
-   and the diagram unless `--summary`.
+0. **Changes under review** — the agent's parts: PR block, then the `Approach fit:`
+   line with any detail the approach agent returned, design-impact block, and the
+   diagram unless `--summary`.
 1. **Compound review** (first, primary) — your verified findings with the findings
    of whichever other engines ran folded in. Each finding uses its `<ID>` and
    carries its verdict. Note the engine that earned it (e.g. `codex`, `deep`,
@@ -646,8 +688,8 @@ If a trigger fires, end the report with one line naming it:
 If none fires, say `Topology triggers: none` and leave it there. Do not run the
 engine on your own initiative either way.
 
-End with one line naming which engines actually ran and how many findings each
-contributed, then `Lessons: <n> loaded from <files>, <m> findings, <s> skipped`. A review that silently lost an engine must not read as a full-fanout
+End with one line naming which engines actually ran, the approach check among them,
+and how many findings each contributed, then `Lessons: <n> loaded from <files>, <m> findings, <s> skipped`. A review that silently lost an engine must not read as a full-fanout
 review. An engine that ran but returned nothing usable is **not** the same as an
 engine that ran clean; state which happened. If a heavier engine was not requested,
 say so plainly (e.g. `deep engine: not run (no --deep)`).

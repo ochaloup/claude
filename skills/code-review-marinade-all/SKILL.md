@@ -154,24 +154,17 @@ Runs inside a launched tab for a PR I already reviewed and was re-requested on.
 5. Invoke `review-lesson` with the PR URL. `pre-existing` findings are its
    earlier-round misses.
 6. Under the followup table print one line per thread, `<ID> | resolved | <reply URL>`,
-   then one per REJECTed decline, `<ID> | left open | <the gate's reason>`, then the
-   **PR digest**, then `PR: <PR URL>` as the last line, and stop. New findings stay in
+   then one per REJECTed decline, `<ID> | left open | <the gate's reason>`, then one
+   per WEAK or WRONG row of the followup's **Prior comments**, `<ID> | <handling> |
+   <strategy sentence>` — already resolved by the author, so reopening it is my call,
+   then the **PR digest**, then `PR: <PR URL>` as the last line, and stop. New findings stay in
    the report — posting them is the user's `post-review-comments` run.
 
 ## PR digest
 
 Both modes print it right above the `PR:` line, so I learn what the PR is about
-without scrolling up. It describes the whole PR's net effect against its base, never
-only the commits since my last review. Write it inline from the PR body and
-`git diff origin/<baseRefName>...HEAD`, in the format and style of the `pr-description`
-skill, steps 4-5 — do not invoke that skill, since it fetches:
-
-```
-**Problem:** <what is wrong or missing without this PR>
-**Core change:** <the one mechanism that answers it>
-**Goal:** <what the PR buys once merged>
-
-- <verb-first sentence: one change and the intention behind it>
-```
-
-All three labelled lines always, then 2-5 bullets. No finding IDs, no verdicts.
+without scrolling up. Reuse what this conversation printed under **Changes under
+review** — from `code-review`, or from `pr-review-followup`, which produces it even with
+no new commits: the PR block (Problem, Core change, Goal, bullets), then the
+`Approach fit:` line. Copy them verbatim; do not rewrite or regenerate them. It is
+never skipped; if neither skill printed it, that is a blocker.
